@@ -308,7 +308,7 @@ async function generateUserMessageSwipe(message, messageId, context) {
     const chat = context.chat;
 
     if (!impersonationPrompt) {
-        await duplicateMessageAsSwipe(message, messageId);
+        toastr.warning('Please configure an impersonation prompt first to generate user message swipes.', 'Deep Swipe');
         return;
     }
 
@@ -487,18 +487,16 @@ async function generateUserMessageSwipe(message, messageId, context) {
                 message.extra.reasoning_type = ReasoningType.Model;
             }
         } else {
-            // Fallback: duplicate current message
-            message.swipes[message.swipe_id] = currentText;
-            message.mes = currentText;
-            
-            // Copy swipe_info from current swipe
-            const currentSwipeId = message.swipe_id > 0 ? message.swipe_id - 1 : 0;
-            message.swipe_info.push(structuredClone(message.swipe_info?.[currentSwipeId] || {
-                send_date: new Date().toISOString(),
-                gen_started: null,
-                gen_finished: null,
-                extra: structuredClone(message.extra || {}),
-            }));
+            // Fallback: generation failed - revert the swipe and show error
+            message.swipes.pop();
+            message.swipe_info?.pop();
+            message.swipe_id = Math.max(0, message.swipes.length - 1);
+            // Restore original message text in UI
+            if (messageElement) {
+                messageElement.textContent = currentText;
+            }
+            toastr.error('Failed to generate swipe. Please check your API connection and try again.', 'Deep Swipe');
+            throw new Error('Generation failed: no text received');
         }
 
         // Remove the waiting toast
@@ -529,19 +527,6 @@ async function generateUserMessageSwipe(message, messageId, context) {
     }
 }
 
-/**
- * Duplicate current message as a new swipe (fallback when no prompt set)
- */
-async function duplicateMessageAsSwipe(message, messageId) {
-    if (!Array.isArray(message.swipes)) {
-        message.swipes = [message.mes];
-        message.swipe_id = 0;
-    }
-
-    // Add duplicate as new swipe
-    message.swipes.push(message.mes);
-    message.swipe_id = message.swipes.length - 1;
-}
 
 /**
  * Check if message should have UI components
