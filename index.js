@@ -9,8 +9,9 @@
  */
 
 import { extension_settings, getContext } from "../../../extensions.js";
-import { saveSettingsDebounced, Generate, saveChatConditional, deleteMessage, deleteSwipe } from "../../../../script.js";
+import { saveSettingsDebounced, Generate, saveChatConditional, deleteMessage, deleteSwipe, eventSource, event_types } from "../../../../script.js";
 import { oai_settings } from "../../../../scripts/openai.js";
+import { updateReasoningUI, ReasoningType } from "../../../../scripts/reasoning.js";
 
 const EXTENSION_NAME = 'deep-swipe';
 const extensionFolderPath = `scripts/extensions/third-party/${EXTENSION_NAME}`;
@@ -93,6 +94,44 @@ function formatSwipeCounter(current, total) {
 /**
  * Navigate to the previous swipe on a message
  */
+/**
+ * Sync reasoning data from swipe_info to message extra
+ * @param {object} message - The message object
+ * @param {number} swipeId - The swipe ID to sync from
+ */
+function syncReasoningFromSwipeInfo(message, swipeId) {
+    if (!message.swipe_info || !message.swipe_info[swipeId]) {
+        return;
+    }
+    
+    const swipeInfo = message.swipe_info[swipeId];
+    if (!message.extra) {
+        message.extra = {};
+    }
+    
+    // Sync reasoning data
+    if (swipeInfo.extra?.reasoning !== undefined) {
+        message.extra.reasoning = swipeInfo.extra.reasoning;
+    } else {
+        delete message.extra.reasoning;
+    }
+    
+    if (swipeInfo.extra?.reasoning_duration !== undefined) {
+        message.extra.reasoning_duration = swipeInfo.extra.reasoning_duration;
+    } else {
+        delete message.extra.reasoning_duration;
+    }
+    
+    if (swipeInfo.extra?.reasoning_type !== undefined) {
+        message.extra.reasoning_type = swipeInfo.extra.reasoning_type;
+    } else {
+        delete message.extra.reasoning_type;
+    }
+}
+
+/**
+ * Navigate to the previous swipe on a message
+ */
 async function dswipeBack(args, messageId) {
     // Check if any message is being edited
     if (isAnyMessageBeingEdited()) {
@@ -132,6 +171,9 @@ async function dswipeBack(args, messageId) {
             // Load text from the new swipe
             message.mes = message.swipes[targetSwipeId];
             
+            // Sync reasoning data from swipe_info
+            syncReasoningFromSwipeInfo(message, targetSwipeId);
+            
             // Restore hidden messages
             chat.push(...messagesToRestore);
             
@@ -143,8 +185,9 @@ async function dswipeBack(args, messageId) {
                 showSwipes: true
             });
             
-            // Update UI
+            // Update UI including reasoning
             updateMessageSwipeUI(messageId);
+            updateReasoningUI(messageId, { reset: true });
             
             return `Navigated to swipe ${message.swipe_id + 1}/${message.swipes.length}`;
         } else {
@@ -258,6 +301,7 @@ async function dswipeForward(args, messageId) {
 
 /**
  * Generate a new swipe for a user message using guided impersonation
+ * Now with support for reasoning/thinking traces
  */
 async function generateUserMessageSwipe(message, messageId, context) {
     const impersonationPrompt = extension_settings[EXTENSION_NAME]?.impersonationPrompt || '';
@@ -268,10 +312,18 @@ async function generateUserMessageSwipe(message, messageId, context) {
         return;
     }
 
-    // Initialize swipes array if needed
+    // Initialize swipes array and swipe_info if needed
     if (!Array.isArray(message.swipes)) {
         message.swipes = [message.mes];
         message.swipe_id = 0;
+    }
+    if (!Array.isArray(message.swipe_info)) {
+        message.swipe_info = message.swipes.map(() => ({
+            send_date: message.send_date,
+            gen_started: message.gen_started,
+            gen_finished: message.gen_finished,
+            extra: structuredClone(message.extra || {}),
+        }));
     }
 
     // Get current swipe text
@@ -292,6 +344,12 @@ async function generateUserMessageSwipe(message, messageId, context) {
     // Add placeholder for new swipe
     message.swipes.push('');
     message.swipe_id = message.swipes.length - 1;
+
+    // Variables to capture reasoning data
+    let capturedReasoning = '';
+    let reasoningDuration = null;
+    let generationStarted = null;
+    let generationFinished = null;
 
     try {
         // Show ellipsis (...) before generation starts
@@ -327,6 +385,27 @@ async function generateUserMessageSwipe(message, messageId, context) {
         // Set up event listener for input events
         textarea?.addEventListener('input', interceptInput, { once: true });
 
+        // Set up event listener to capture reasoning from the generation
+        // This listens for STREAM_REASONING_DONE which contains the reasoning data
+        const reasoningHandler = (reasoning, duration, msgId, state) => {
+            if (reasoning && typeof reasoning === 'string') {
+                capturedReasoning = reasoning;
+                reasoningDuration = duration;
+            }
+        };
+        eventSource.on(event_types.STREAM_REASONING_DONE, reasoningHandler);
+
+        // Set up event listener to capture generation timing
+        const generationStartHandler = () => {
+            generationStarted = new Date();
+        };
+        eventSource.on(event_types.GENERATION_STARTED, generationStartHandler);
+
+        const generationEndHandler = () => {
+            generationFinished = new Date();
+        };
+        eventSource.on(event_types.GENERATION_ENDED, generationEndHandler);
+
         try {
             // Generate using impersonate (sends as user role)
             await Generate('impersonate', generateOptions);
@@ -341,8 +420,11 @@ async function generateUserMessageSwipe(message, messageId, context) {
                 textarea.dispatchEvent(new Event('input', { bubbles: true }));
             }
         } finally {
-            // Clean up listener
+            // Clean up listeners
             textarea?.removeEventListener('input', interceptInput);
+            eventSource.removeListener(event_types.STREAM_REASONING_DONE, reasoningHandler);
+            eventSource.removeListener(event_types.GENERATION_STARTED, generationStartHandler);
+            eventSource.removeListener(event_types.GENERATION_ENDED, generationEndHandler);
             // Restore original impersonation prompt
             oai_settings.impersonation_prompt = originalImpersonationPrompt;
         }
@@ -375,18 +457,63 @@ async function generateUserMessageSwipe(message, messageId, context) {
 
         // If we got generated text, use it; otherwise duplicate current
         if (generatedText && generatedText.trim()) {
-            message.swipes[message.swipe_id] = generatedText.trim();
+            const trimmedText = generatedText.trim();
+            message.swipes[message.swipe_id] = trimmedText;
             // CRITICAL FIX: Update message.mes to match the new swipe!
-            message.mes = generatedText.trim();
+            message.mes = trimmedText;
+
+            // Create swipe_info entry with reasoning data
+            const swipeInfoExtra = {
+                ...structuredClone(message.extra || {}),
+            };
+
+            // Store reasoning data if captured
+            if (capturedReasoning) {
+                swipeInfoExtra.reasoning = capturedReasoning;
+                swipeInfoExtra.reasoning_duration = reasoningDuration;
+                swipeInfoExtra.reasoning_type = ReasoningType.Model;
+            }
+
+            // Add swipe_info entry
+            message.swipe_info.push({
+                send_date: generationFinished ? generationFinished.toISOString() : new Date().toISOString(),
+                gen_started: generationStarted,
+                gen_finished: generationFinished,
+                extra: swipeInfoExtra,
+            });
+
+            // Also update current message extra with reasoning for immediate display
+            if (capturedReasoning) {
+                if (!message.extra) {
+                    message.extra = {};
+                }
+                message.extra.reasoning = capturedReasoning;
+                message.extra.reasoning_duration = reasoningDuration;
+                message.extra.reasoning_type = ReasoningType.Model;
+            }
         } else {
             // Fallback: duplicate current message
             message.swipes[message.swipe_id] = currentText;
             message.mes = currentText;
+            
+            // Copy swipe_info from current swipe
+            const currentSwipeId = message.swipe_id > 0 ? message.swipe_id - 1 : 0;
+            message.swipe_info.push(structuredClone(message.swipe_info?.[currentSwipeId] || {
+                send_date: new Date().toISOString(),
+                gen_started: null,
+                gen_finished: null,
+                extra: structuredClone(message.extra || {}),
+            }));
         }
 
         // Remove the waiting toast
         if (waitingToast) {
             $(waitingToast).remove();
+        }
+
+        // Update reasoning UI if reasoning was captured
+        if (capturedReasoning) {
+            updateReasoningUI(messageId);
         }
 
     } catch (error) {
@@ -397,6 +524,7 @@ async function generateUserMessageSwipe(message, messageId, context) {
         }
         // Revert swipe
         message.swipes.pop();
+        message.swipe_info?.pop();
         message.swipe_id = Math.max(0, message.swipes.length - 1);
         // Restore original message text in UI
         if (messageElement) {
@@ -575,6 +703,9 @@ function addSwipeNavigationToMessage(messageId) {
             if (msg.is_user) {
                 msg.swipe_id = targetSwipeId;
                 msg.mes = msg.swipes[targetSwipeId];
+                
+                // Sync reasoning data from swipe_info
+                syncReasoningFromSwipeInfo(msg, targetSwipeId);
             } else {
                 // For assistant messages, try native swipe but fallback to manual if it fails
                 // SillyTavern only allows swiping the last message.
@@ -627,7 +758,9 @@ function addSwipeNavigationToMessage(messageId) {
                 showSwipes: true
             });
             
+            // Update UI including reasoning
             updateMessageSwipeUI(messageId);
+            updateReasoningUI(messageId, { reset: true });
         }
     });
 
