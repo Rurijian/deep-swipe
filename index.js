@@ -4,12 +4,12 @@
  * Allows swiping (regenerating) any message in chat history, not just the last one.
  *
  * @author Rurijian
- * @version 1.1.0
+ * @version 1.2.0
  * @license MIT
  */
 
 import { extension_settings, getContext } from "../../../extensions.js";
-import { saveSettingsDebounced, Generate, saveChatConditional } from "../../../../script.js";
+import { saveSettingsDebounced, Generate, saveChatConditional, deleteMessage, deleteSwipe } from "../../../../script.js";
 import { oai_settings } from "../../../../scripts/openai.js";
 
 const EXTENSION_NAME = 'deep-swipe';
@@ -725,6 +725,65 @@ function updateMessageSwipeUI(messageId) {
 }
 
 /**
+ * Store the current message ID being edited for delete swipe functionality
+ */
+let currentEditMessageId = null;
+
+/**
+ * Check if a message has multiple swipes and can delete swipe
+ */
+function canDeleteSwipe(messageId) {
+    const context = getContext();
+    const chat = context.chat;
+
+    if (!isValidMessageId(messageId, chat)) {
+        return false;
+    }
+
+    const message = chat[messageId];
+    return Array.isArray(message.swipes) && message.swipes.length > 1;
+}
+
+/**
+ * Track which message is being edited to support delete swipe in confirmation popup
+ */
+function trackEditMessage(messageId) {
+    currentEditMessageId = messageId;
+}
+
+/**
+ * Clear tracked edit message
+ */
+function clearEditMessage() {
+    currentEditMessageId = null;
+}
+
+/**
+ * Get the current swipe index for delete confirmation popup
+ * This is used by the event interceptor to pass swipe info to deleteMessage
+ */
+function getSwipeIndexForDelete() {
+    if (currentEditMessageId === null) return undefined;
+
+    const context = getContext();
+    const chat = context.chat;
+
+    if (!isValidMessageId(currentEditMessageId, chat)) {
+        return undefined;
+    }
+
+    const message = chat[currentEditMessageId];
+
+    // Only offer delete swipe for user messages with multiple swipes
+    if (!message.is_user || !canDeleteSwipe(currentEditMessageId)) {
+        return undefined;
+    }
+
+    // Return the current swipe ID for deletion
+    return message.swipe_id ?? 0;
+}
+
+/**
  * Remove all deep swipe UI components
  */
 function removeAllDeepSwipeUI() {
@@ -840,6 +899,58 @@ async function registerSlashCommands() {
             },
         }));
 
+        // Register delete swipe command
+        SlashCommandParser.addCommandObject(SlashCommand.fromProps({
+            name: 'ddelswipe',
+            helpString: 'Deep Swipe - Delete the current swipe from a message. Usage: /ddelswipe [messageId]',
+            returns: 'string',
+            aliases: ['dds'],
+            unnamedArgumentList: [
+                new SlashCommandArgument('messageId', ARGUMENT_TYPE.NUMBER, true, 'Message ID (defaults to last message)'),
+            ],
+            callback: async (args, messageId) => {
+                if (!extension_settings[EXTENSION_NAME]?.enabled) {
+                    toastr.warning('Deep Swipe is disabled.', 'Deep Swipe');
+                    return 'Extension disabled';
+                }
+
+                const context = getContext();
+                const chat = context.chat;
+                let id;
+
+                if (messageId === undefined || messageId === null) {
+                    // Default to last message
+                    id = chat.length - 1;
+                } else {
+                    id = parseInt(messageId, 10);
+                }
+
+                if (isNaN(id) || id < 0 || id >= chat.length) {
+                    toastr.error('Message ID must be a valid number', 'Deep Swipe');
+                    return 'Invalid message ID';
+                }
+
+                // Get the context to access the chat
+                const delCtx = getContext();
+                const delChat = delCtx.chat;
+
+                if (!isValidMessageId(id, delChat)) {
+                    toastr.error('Invalid message ID', 'Deep Swipe');
+                    return 'Invalid message ID';
+                }
+
+                const message = delChat[id];
+                if (!Array.isArray(message.swipes) || message.swipes.length <= 1) {
+                    toastr.warning('No swipes available to delete for this message.', 'Deep Swipe');
+                    return 'No swipes to delete';
+                }
+
+                const swipeIndex = message.swipe_id ?? 0;
+                await deleteSwipe(swipeIndex, id);
+                return `Deleted swipe ${swipeIndex + 1} from message ${id}`;
+            },
+        }));
+
     } catch (error) {
         console.error(`[${EXTENSION_NAME}] Failed to register slash commands:`, error);
     }
@@ -897,9 +1008,119 @@ function initializeUi() {
         });
         
         observer.observe(chatElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+
+        // Monitor for edit mode changes - track which message is being edited
+        const editObserver = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                    const target = mutation.target;
+                    if (target.classList?.contains('mes')) {
+                        const mesId = target.getAttribute('mesid');
+                        if (mesId) {
+                            const messageId = parseInt(mesId, 10);
+                            if (target.classList.contains('is_editing')) {
+                                // Message entered edit mode - track it
+                                trackEditMessage(messageId);
+                            } else if (currentEditMessageId === messageId) {
+                                // Message exited edit mode - clear tracking only if it's the same message
+                                clearEditMessage();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        editObserver.observe(chatElement, { subtree: true, attributes: true, attributeFilter: ['class'] });
+
+        // Also track when edit mode is entered via the edit button click
+        // This ensures we catch the message ID before the class is added
+        $(document).on('click', '.mes_edit', function() {
+            const mesElement = $(this).closest('.mes');
+            const mesId = mesElement.attr('mesid');
+            if (mesId) {
+                const messageId = parseInt(mesId, 10);
+                trackEditMessage(messageId);
+            }
+        });
     }
 
+    // Intercept delete button clicks to enable swipe deletion for user messages
+    // Native SillyTavern only allows swipe deletion for assistant messages (!message.is_user)
+    // Use capturing phase to intercept BEFORE the native handler
+    document.addEventListener('click', async function (e) {
+        // Check if the clicked element is the delete button
+        const deleteButton = e.target.closest('.mes_edit_delete');
+        if (!deleteButton) return;
+
+        // Check if deep swipe is enabled
+        if (!extension_settings[EXTENSION_NAME]?.enabled) return;
+
+        // Get the message ID from the DOM - find the parent .mes element
+        const mesElement = deleteButton.closest('.mes');
+        if (!mesElement) return;
+
+        const mesIdAttr = mesElement.getAttribute('mesid');
+        if (!mesIdAttr) return;
+
+        const messageId = parseInt(mesIdAttr, 10);
+        if (isNaN(messageId)) return;
+
+        const context = getContext();
+        const chat = context.chat;
+
+        // Check if this is a valid message
+        if (!isValidMessageId(messageId, chat)) return;
+
+        const message = chat[messageId];
+
+        // Only handle if this is a user message
+        if (!message.is_user) return;
+
+        // Check if user swipes feature is enabled
+        if (!extension_settings[EXTENSION_NAME]?.userSwipes) return;
+
+        // Check if there are multiple swipes to delete
+        if (!Array.isArray(message.swipes) || message.swipes.length <= 1) return;
+
+        const swipeIndex = message.swipe_id ?? 0;
+
+        // This is a user message with multiple swipes - handle it ourselves
+        // Stop the native handler by preventing default and stopping propagation
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+
+        try {
+            // Call deleteMessage with the swipe index, requesting confirmation
+            // This will show the popup with "Delete Swipe" and "Delete Message" buttons
+            await deleteMessage(messageId, swipeIndex, true);
+
+            // Update tracking
+            clearEditMessage();
+        } catch (error) {
+            console.error(`[${EXTENSION_NAME}] Error in delete handler:`, error);
+        }
+
+        return false;
+    }, true); // Use capturing phase
+
     buttonsInitialized = true;
+}
+
+/**
+ * Export the swipe index getter for use by other extensions or native code
+ * This allows the delete confirmation popup to show "Delete Swipe" option
+ */
+export function getDeleteSwipeIndex() {
+    return getSwipeIndexForDelete();
+}
+
+/**
+ * Export the current edit message ID
+ */
+export function getCurrentEditMessageId() {
+    return currentEditMessageId;
 }
 
 /**
