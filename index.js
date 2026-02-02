@@ -372,9 +372,8 @@ async function generateUserMessageSwipe(message, messageId, context) {
         const originalText = textarea ? textarea.value : '';
         let interceptedText = null;
 
-        // NOTE: Reasoning capture temporarily disabled due to infinite loop issue
-        // The loop appears to be caused by something in the textarea interaction
-        // TODO: Re-implement reasoning capture without triggering the loop
+        // Record generation start time for reasoning duration
+        generationStarted = new Date();
 
         try {
             // Generate using impersonate (sends as user role)
@@ -386,6 +385,28 @@ async function generateUserMessageSwipe(message, messageId, context) {
             // Capture text from textarea
             if (textarea && textarea.value !== originalText) {
                 interceptedText = textarea.value;
+            }
+
+            // Record generation finish time
+            generationFinished = new Date();
+
+            // Parse reasoning from the generated text after generation completes
+            // This avoids the infinite loop caused by streaming event listeners
+            if (interceptedText) {
+                const parsedResult = parseReasoningFromString(interceptedText, { strict: true });
+                if (parsedResult && parsedResult.reasoning) {
+                    capturedReasoning = parsedResult.reasoning;
+                    // Use the message content without the reasoning block
+                    interceptedText = parsedResult.content;
+                    reasoningDuration = generationFinished.getTime() - generationStarted.getTime();
+                    console.debug(`[${EXTENSION_NAME}] Parsed reasoning from impersonation:`, capturedReasoning.substring(0, 50) + '...');
+                }
+            }
+
+            // Clear the textarea after capturing (standard impersonation behavior)
+            if (textarea) {
+                textarea.value = originalText;
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
             }
         } finally {
             // Restore original impersonation prompt
