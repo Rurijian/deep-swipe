@@ -10,6 +10,7 @@
 
 import { extension_settings, getContext } from "../../../extensions.js";
 import { saveSettingsDebounced, Generate, saveChatConditional } from "../../../../script.js";
+import { oai_settings } from "../../../../scripts/openai.js";
 
 const EXTENSION_NAME = 'deep-swipe';
 const extensionFolderPath = `scripts/extensions/third-party/${EXTENSION_NAME}`;
@@ -286,14 +287,56 @@ async function generateUserMessageSwipe(message, messageId, context) {
             messageElement.textContent = '...';
         }
 
-        // Use quiet generation with our custom prompt
-        // IMPORTANT: dryRun is a third positional parameter, NOT a property of options object!
+        // Use impersonate generation to get user role
+        // We'll intercept the text before it goes to the input box
+        // Temporarily clear SillyTavern's impersonation prompt to avoid duplication
+        const originalImpersonationPrompt = oai_settings.impersonation_prompt;
+        oai_settings.impersonation_prompt = '';
+
         const generateOptions = {
             quiet_prompt: fullPrompt,
         };
 
-        // Generate the alternative
-        const result = await Generate('quiet', generateOptions);
+        // Get textarea reference
+        const textarea = document.getElementById('send_textarea');
+        const originalText = textarea ? textarea.value : '';
+        let interceptedText = null;
+
+        // Create interceptor function
+        const interceptInput = () => {
+            if (textarea && textarea.value !== originalText && !interceptedText) {
+                interceptedText = textarea.value;
+                // Restore original content
+                textarea.value = originalText;
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        };
+
+        // Set up event listener for input events
+        textarea?.addEventListener('input', interceptInput, { once: true });
+
+        try {
+            // Generate using impersonate (sends as user role)
+            await Generate('impersonate', generateOptions);
+
+            // Give a moment for the input event to fire
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // If we didn't intercept, check the value directly
+            if (!interceptedText && textarea && textarea.value !== originalText) {
+                interceptedText = textarea.value;
+                textarea.value = originalText;
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        } finally {
+            // Clean up listener
+            textarea?.removeEventListener('input', interceptInput);
+            // Restore original impersonation prompt
+            oai_settings.impersonation_prompt = originalImpersonationPrompt;
+        }
+
+        // Use intercepted text as result
+        const result = interceptedText;
         
         // Extract the generated text from the result
         let generatedText = '';
