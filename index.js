@@ -509,6 +509,7 @@ function addSwipeNavigationToMessage(messageId) {
 
         // Check if any message is being edited - disable swipes globally during edit
         if (isAnyMessageBeingEdited()) {
+            toastr.warning('Cannot swipe while a message is being edited. Please finish editing first.', 'Deep Swipe');
             return;
         }
 
@@ -543,6 +544,7 @@ function addSwipeNavigationToMessage(messageId) {
 
         // Check if any message is being edited - disable swipes globally during edit
         if (isAnyMessageBeingEdited()) {
+            toastr.warning('Cannot swipe while a message is being edited. Please finish editing first.', 'Deep Swipe');
             return;
         }
         
@@ -780,8 +782,9 @@ function clearEditMessage() {
  * This is used to disable swipes globally while editing
  */
 function isAnyMessageBeingEdited() {
-    // Check if any message element has the 'is_editing' class
-    return document.querySelector('.mes.is_editing') !== null;
+    // Check for edit textarea presence which indicates edit mode
+    const editTextareas = document.querySelectorAll('.mes .edit_textarea');
+    return editTextareas.length > 0;
 }
 
 /**
