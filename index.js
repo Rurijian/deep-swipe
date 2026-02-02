@@ -94,6 +94,12 @@ function formatSwipeCounter(current, total) {
  * Navigate to the previous swipe on a message
  */
 async function dswipeBack(args, messageId) {
+    // Check if any message is being edited
+    if (isAnyMessageBeingEdited()) {
+        toastr.warning('Cannot swipe while a message is being edited. Please finish editing first.', 'Deep Swipe');
+        return 'Cannot swipe while editing';
+    }
+
     const context = getContext();
     const chat = context.chat;
 
@@ -176,6 +182,12 @@ async function dswipeBack(args, messageId) {
  * Generate a new swipe for a message
  */
 async function dswipeForward(args, messageId) {
+    // Check if any message is being edited
+    if (isAnyMessageBeingEdited()) {
+        toastr.warning('Cannot swipe while a message is being edited. Please finish editing first.', 'Deep Swipe');
+        return 'Cannot swipe while editing';
+    }
+
     const context = getContext();
     const chat = context.chat;
 
@@ -494,14 +506,19 @@ function addSwipeNavigationToMessage(messageId) {
         leftArrow.addEventListener('click', async (e) => {
         e.stopPropagation();
         e.preventDefault();
-        
+
+        // Check if any message is being edited - disable swipes globally during edit
+        if (isAnyMessageBeingEdited()) {
+            return;
+        }
+
         if (!extension_settings[EXTENSION_NAME]?.enabled) {
             return;
         }
         if (leftArrow.classList.contains('disabled')) {
             return;
         }
-        
+
         await dswipeBack({}, messageId);
     });
     }
@@ -524,8 +541,8 @@ function addSwipeNavigationToMessage(messageId) {
         e.stopPropagation();
         e.preventDefault();
 
-        // Check if message is being edited - disable swipes during edit
-        if (messageElement.classList.contains('is_editing')) {
+        // Check if any message is being edited - disable swipes globally during edit
+        if (isAnyMessageBeingEdited()) {
             return;
         }
         
@@ -756,6 +773,15 @@ function trackEditMessage(messageId) {
  */
 function clearEditMessage() {
     currentEditMessageId = null;
+}
+
+/**
+ * Check if any message is currently being edited
+ * This is used to disable swipes globally while editing
+ */
+function isAnyMessageBeingEdited() {
+    // Check if any message element has the 'is_editing' class
+    return document.querySelector('.mes.is_editing') !== null;
 }
 
 /**
