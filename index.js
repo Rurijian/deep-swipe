@@ -232,7 +232,10 @@ async function dswipeForward(args, messageId) {
         });
 
         if (extension_settings[EXTENSION_NAME]?.swipeNavigation) {
-            setTimeout(() => addSwipeNavigationToMessage(messageId), 100);
+            setTimeout(() => {
+                addSwipeNavigationToMessage(messageId);
+                updateMessageSwipeUI(messageId);
+            }, 100);
         }
 
         toastr.success(`Generated new swipe for message #${messageId}`, 'Deep Swipe');
