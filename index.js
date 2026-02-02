@@ -17,7 +17,7 @@ const EXTENSION_NAME = 'deep-swipe';
 const extensionFolderPath = `scripts/extensions/third-party/${EXTENSION_NAME}`;
 
 // Default impersonation prompt
-const DEFAULT_IMPERSONATION_PROMPT = 'NEW DIRECTION: Impersonate your next reply as if you were {{user}}, using this subsequent text as a guide to the reply\'s content: {{input}}';
+const DEFAULT_IMPERSONATION_PROMPT = "NEW DIRECTION: Impersonate your next reply as if you were {{user}}, in {{user}}'s voice, using the subsequent text as a guide of what to then embellish: {{input}}";
 
 // Default settings - all features enabled by default, user swipes ON
 const defaultSettings = {
