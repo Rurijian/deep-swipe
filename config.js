@@ -27,7 +27,7 @@ export const extensionFolderPath = `scripts/extensions/third-party/${EXTENSION_N
  * Default impersonation prompt for user message swipes
  * @constant {string}
  */
-export const DEFAULT_IMPERSONATION_PROMPT = "NEW DIRECTION: Impersonate your next reply as if you were {{user}}, in {{user}}'s voice, using the subsequent text as a guide of what to then embellish: {{input}}";
+export const DEFAULT_IMPERSONATION_PROMPT = "NEW DIRECTION: re-write the last reply as if you were {{user}}, in {{user}}'s voice.";
 
 /**
  * Default settings for the extension
