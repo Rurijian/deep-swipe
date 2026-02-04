@@ -1,7 +1,7 @@
 # DEEP SWIPE              
 
 A SillyTavern extension that allows you to swipe (regenerate) any message in your chat history, not just the last one. Clone the native swipe experience for every message!
-
+<video src='Deep-Swipe.mp4' />
 
 ![Alt text](Deep%20Swipe.png "Deep Swiping!")
 
