@@ -2,8 +2,8 @@
 
 A SillyTavern extension that allows you to swipe (regenerate) any message in your chat history, not just the last one. Clone the native swipe experience for every message!
 
+https://private-user-images.githubusercontent.com/3434910/544931138-5d64a252-b537-4434-9e66-de8ed5a008af.mp4
 
-![Alt text](https://github.com/user-attachments/assets/82c220ae-e345-48d9-ac1f-8a6016d584ff) "Deep Swiping!")
 
 
 
