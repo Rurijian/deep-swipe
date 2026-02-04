@@ -17,13 +17,23 @@
             </div>
  
             <div class="deep-swipe-extension_block flex-container">
-                <input id="deep_swipe_user_swipes" type="checkbox" />
+                <input id="deep_swipe_user_swipes" type="checkbox" checked />
                 <label for="deep_swipe_user_swipes">Enable Deep Swipes on user messages</label>
+            </div>
+
+            <div class="deep-swipe-extension_block flex-container">
+                <input id="deep_swipe_assistant_swipes" type="checkbox" checked />
+                <label for="deep_swipe_assistant_swipes">Enable Deep Swipes on assistant messages</label>
+            </div>
+ 
+            <div class="deep-swipe-extension_block flex-container">
+                <input id="deep_swipe_auto_advance" type="checkbox" />
+                <label for="deep_swipe_auto_advance">Auto-advance to latest swipe after generation</label>
             </div>
  
             <div class="deep-swipe-extension_block">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <label for="deep_swipe_impersonation_prompt">Impersonation Prompt:</label>
+                    <label for="deep_swipe_impersonation_prompt">User Impersonation Prompt:</label>
                     <div id="deep_swipe_reset_prompt" class="menu_button fa-solid fa-rotate-left" title="Reset to default prompt" style="padding: 5px 8px; font-size: 12px;"></div>
                 </div>
                 <textarea id="deep_swipe_impersonation_prompt" rows="3" style="width: 100%; margin-top: 5px;"></textarea>

@@ -4,7 +4,7 @@
  * Contains constants, default settings, and settings management.
  *
  * @author Rurijian
- * @version 1.2.0
+ * @version 1.3.6
  * @license MIT
  */
 
@@ -27,7 +27,7 @@ export const extensionFolderPath = `scripts/extensions/third-party/${EXTENSION_N
  * Default impersonation prompt for user message swipes
  * @constant {string}
  */
-export const DEFAULT_IMPERSONATION_PROMPT = "NEW DIRECTION: re-write the last reply as if you were {{user}}, in {{user}}'s voice.";
+export const DEFAULT_IMPERSONATION_PROMPT = "NEW DIRECTION: Could you re-write/improve my last reply as if you were me? Just post the reply.";
 
 /**
  * Default settings for the extension
@@ -37,7 +37,10 @@ export const defaultSettings = {
     enabled: true,
     swipeNavigation: true,
     userSwipes: true,
+    assistantSwipes: true,
     impersonationPrompt: DEFAULT_IMPERSONATION_PROMPT,
+    keepSwipeVisible: true,
+    autoAdvanceToLatest: false,
 };
 
 /**
@@ -78,9 +81,19 @@ export function loadSettings() {
         userSwipesCheckbox.checked = extension_settings[EXTENSION_NAME].userSwipes;
     }
 
+    const assistantSwipesCheckbox = document.getElementById('deep_swipe_assistant_swipes');
+    if (assistantSwipesCheckbox) {
+        assistantSwipesCheckbox.checked = extension_settings[EXTENSION_NAME].assistantSwipes ?? defaultSettings.assistantSwipes;
+    }
+
     const impersonationPromptTextarea = document.getElementById('deep_swipe_impersonation_prompt');
     if (impersonationPromptTextarea) {
         impersonationPromptTextarea.value = extension_settings[EXTENSION_NAME].impersonationPrompt || '';
+    }
+
+    const autoAdvanceCheckbox = document.getElementById('deep_swipe_auto_advance');
+    if (autoAdvanceCheckbox) {
+        autoAdvanceCheckbox.checked = extension_settings[EXTENSION_NAME].autoAdvanceToLatest ?? defaultSettings.autoAdvanceToLatest;
     }
 }
 

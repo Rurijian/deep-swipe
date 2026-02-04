@@ -175,6 +175,10 @@ export function getCurrentEditMessageId() {
  * @returns {Object} The message with swipes initialized
  */
 export function ensureSwipes(message) {
+    if (!message || typeof message !== 'object') {
+        console.trace(`[${EXTENSION_NAME}] [ensureSwipes] failed. '${message}' is not an object.`);
+        return null;
+    }
     if (!Array.isArray(message.swipes)) {
         message.swipes = [message.mes];
         message.swipe_id = 0;

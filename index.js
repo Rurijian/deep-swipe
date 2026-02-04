@@ -53,14 +53,11 @@ import {
 } from './ui.js';
 
 import {
+    generateMessageSwipe,
+    handleUserSwipeBack,
     dswipeBack,
     dswipeForward
-} from './swipe-assistant.js';
-
-import {
-    generateUserMessageSwipe,
-    handleUserSwipeBack
-} from './swipe-user.js';
+} from './deep-swipe.js';
 
 import {
     registerSlashCommands,
@@ -175,6 +172,36 @@ function onImpersonationPromptChange(event) {
 }
 
 /**
+ * Handle assistant swipes toggle change
+ * @param {Event} event - The change event
+ */
+function onAssistantSwipesChange(event) {
+    const value = Boolean(event.target.checked);
+    updateSetting('assistantSwipes', value);
+
+    if (value) {
+        toastr.success('Assistant message swipes enabled', 'Deep Swipe');
+        // Refresh UI to show navigation on assistant messages
+        const context = getContext();
+        context.chat.forEach((_, index) => addSwipeNavigationToMessage(index));
+    } else {
+        toastr.info('Assistant message swipes disabled', 'Deep Swipe');
+        // Remove navigation from assistant messages
+        removeAllDeepSwipeUI();
+        // Re-add to user messages only
+        const context = getContext();
+        const settings = getSettings();
+        if (settings?.swipeNavigation && settings?.userSwipes) {
+            context.chat.forEach((msg, index) => {
+                if (msg.is_user) {
+                    addSwipeNavigationToMessage(index);
+                }
+            });
+        }
+    }
+}
+
+/**
  * Handle reset prompt button click
  */
 function onResetPromptClick() {
@@ -183,6 +210,21 @@ function onResetPromptClick() {
         textarea.value = DEFAULT_IMPERSONATION_PROMPT;
         updateSetting('impersonationPrompt', DEFAULT_IMPERSONATION_PROMPT);
         toastr.info('Impersonation prompt reset to default', 'Deep Swipe');
+    }
+}
+
+/**
+ * Handle auto-advance toggle change
+ * @param {Event} event - The change event
+ */
+function onAutoAdvanceChange(event) {
+    const value = Boolean(event.target.checked);
+    updateSetting('autoAdvanceToLatest', value);
+
+    if (value) {
+        toastr.info('Auto-advance to latest swipe enabled', 'Deep Swipe');
+    } else {
+        toastr.info('Auto-advance to latest swipe disabled', 'Deep Swipe');
     }
 }
 
@@ -200,6 +242,8 @@ jQuery(async () => {
         document.getElementById('deep_swipe_enabled')?.addEventListener('change', onEnabledChange);
         document.getElementById('deep_swipe_swipe_navigation')?.addEventListener('change', onSwipeNavigationChange);
         document.getElementById('deep_swipe_user_swipes')?.addEventListener('change', onUserSwipesChange);
+        document.getElementById('deep_swipe_assistant_swipes')?.addEventListener('change', onAssistantSwipesChange);
+        document.getElementById('deep_swipe_auto_advance')?.addEventListener('change', onAutoAdvanceChange);
         document.getElementById('deep_swipe_impersonation_prompt')?.addEventListener('input', onImpersonationPromptChange);
         document.getElementById('deep_swipe_reset_prompt')?.addEventListener('click', onResetPromptClick);
 
