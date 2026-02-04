@@ -311,8 +311,26 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
 
         // Create overlay for "read while generating" experience (for both user and assistant)
         // This shows the current swipe content during generation
+<<<<<<< HEAD
         const { createSwipeOverlay } = await import('./ui.js');
         createSwipeOverlay(messageId, message, {
+=======
+        // CRITICAL: Must create overlay BEFORE any truncation/modification to show previous swipe
+        const { createSwipeOverlay } = await import('./ui.js');
+        
+        // For assistant swipes, capture the CURRENT swipe content BEFORE any changes
+        // The overlay clones the DOM, so we need to create it before truncation
+        const overlayMessage = isUserMessage ? message : {
+            ...message,
+            mes: originalMessageState.swipes[originalSwipeId] || message.mes,
+            swipe_id: originalSwipeId,
+            extra: originalMessageState.swipe_info[originalSwipeId]?.extra
+                ? { ...message.extra, ...originalMessageState.swipe_info[originalSwipeId].extra }
+                : message.extra
+        };
+        
+        createSwipeOverlay(messageId, overlayMessage, {
+>>>>>>> dev
             showThrobber: true,
             onComplete: null,
             onStop: () => {
@@ -377,6 +395,13 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             for (let i = messageId; i < 100; i++) {
                 const el = document.querySelector(`.mes[mesid="${i}"]`);
                 if (el) {
+<<<<<<< HEAD
+=======
+                    // Mark with deep-swipe-target so overlay can find it even when stale
+                    if (i === messageId) {
+                        el.setAttribute('data-deep-swipe-target', String(messageId));
+                    }
+>>>>>>> dev
                     el.setAttribute('mesid', `stale-${i}`);
                 } else {
                     break;

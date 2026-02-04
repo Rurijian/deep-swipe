@@ -290,11 +290,16 @@ export function addSwipeNavigationToMessage(messageId) {
                 return;
             }
             
+<<<<<<< HEAD
             // Create overlay immediately BEFORE generation starts
             // This shows the previous swipe content in a popup while new content generates
             if (!msg.is_user) {
                 createSwipeOverlay(messageId, msg);
             }
+=======
+            // Overlay creation moved to generateMessageSwipe in deep-swipe.js
+            // This ensures overlay is created at the right time with proper throbber/stop button
+>>>>>>> dev
             
             if (dswipeForwardFn) {
                 await dswipeForwardFn({}, messageId);
@@ -506,7 +511,11 @@ export function createSwipeOverlay(messageId, message, options = {}) {
         el.style.pointerEvents = 'none';
     });
     
+<<<<<<< HEAD
     // Create wrapper for positioning - put it INSIDE the message element
+=======
+    // Create wrapper for positioning
+>>>>>>> dev
     const overlay = document.createElement('div');
     overlay.id = `deep-swipe-overlay-${messageId}`;
     overlay.className = 'deep-swipe-clone-overlay';
@@ -537,6 +546,7 @@ export function createSwipeOverlay(messageId, message, options = {}) {
     // Add the cloned message
     overlay.appendChild(clone);
     
+<<<<<<< HEAD
     // Position absolute within the message element so it scrolls naturally
     // The overlay covers the entire message
     mesElement.style.position = 'relative';
@@ -547,16 +557,38 @@ export function createSwipeOverlay(messageId, message, options = {}) {
         width: 100%;
         height: 100%;
         z-index: 1;
+=======
+    // Use FIXED positioning relative to viewport
+    // This keeps the overlay in place even when message element is replaced
+    const mesRect = mesElement.getBoundingClientRect();
+    
+    overlay.style.cssText = `
+        position: fixed;
+        left: ${mesRect.left}px;
+        top: ${mesRect.top}px;
+        width: ${mesRect.width}px;
+        height: ${mesRect.height}px;
+        z-index: 10000;
+>>>>>>> dev
         pointer-events: none;
         overflow: hidden;
     `;
     
+<<<<<<< HEAD
     mesElement.appendChild(overlay);
+=======
+    // Append to body so it's not affected by DOM changes in chat
+    document.body.appendChild(overlay);
+>>>>>>> dev
     
     // Store reference with options
     if (!window._deepSwipeOverlayPopups) {
         window._deepSwipeOverlayPopups = {};
     }
+<<<<<<< HEAD
+=======
+    
+>>>>>>> dev
     window._deepSwipeOverlayPopups[messageId] = {
         element: overlay,
         onComplete: onComplete,
@@ -643,10 +675,19 @@ export function removeSwipeOverlay(messageId) {
     const overlayData = window._deepSwipeOverlayPopups?.[messageId];
     if (overlayData) {
         const overlay = overlayData.element || overlayData;
+<<<<<<< HEAD
         // Clean up scroll listener
         if (overlay._cleanupScroll) {
             overlay._cleanupScroll();
         }
+=======
+        
+        // Legacy cleanup for old overlays
+        if (overlay._cleanupScroll) {
+            overlay._cleanupScroll();
+        }
+        
+>>>>>>> dev
         overlay.remove();
         delete window._deepSwipeOverlayPopups[messageId];
     }

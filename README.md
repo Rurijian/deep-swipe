@@ -7,6 +7,7 @@ A SillyTavern extension that allows you to swipe (regenerate) any message in you
 ## Features
 
 - **Deep Swipe**: Generate new swipes anywhere in the context! User or Assistant! It doesn't matter! Swipe everything!!
+- **Read While Generating**: Continue reading the previous swipe while a new one generates! An overlay preserves the content so you don't lose your place!
 - **Deep Impersonate for User Messages**: Generate alternative user messages using a customizable impersonation prompt. Swipe old log with new based chinese models! Change the past, but lazily! *DIRECTORMAXXING*
 - **Deep Regenerate for Assistant Messages**: Regenerate any AI response, not just the last one! Fix that one awkward reply from 20 messages ago!
 - **Navigation Chevrons**: Browse through existing swipes with left/right arrows on each message, just like native, but more!
