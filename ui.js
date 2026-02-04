@@ -54,10 +54,17 @@ export function shouldAddUiComponents(messageElement) {
 
     if (messageElement.getAttribute('is_system') === 'true') return false;
 
-    // Allow user messages if userSwipes setting is enabled
     const isUser = messageElement.getAttribute('is_user') === 'true';
     const settings = getSettings();
-    if (isUser && !settings?.userSwipes) return false;
+
+    // Check if swipes are enabled for this message type
+    if (isUser) {
+        // User messages: check userSwipes setting
+        if (!settings?.userSwipes) return false;
+    } else {
+        // Assistant messages: check assistantSwipes setting (default true)
+        if (settings?.assistantSwipes === false) return false;
+    }
 
     return true;
 }
@@ -65,8 +72,9 @@ export function shouldAddUiComponents(messageElement) {
 /**
  * Update swipe UI for a message (counter, arrow states)
  * @param {number} messageId - The message ID to update
+ * @param {number} [forceCurrentId] - Optional. Force a specific current swipe index for the counter (0-based)
  */
-export function updateMessageSwipeUI(messageId) {
+export function updateMessageSwipeUI(messageId, forceCurrentId) {
     const context = getContext();
     const chat = context.chat;
     const message = chat[messageId];
@@ -77,7 +85,7 @@ export function updateMessageSwipeUI(messageId) {
     if (!messageElement) return;
 
     const swipeCount = message.swipes?.length || 0;
-    const currentId = message.swipe_id || 0;
+    const currentId = forceCurrentId !== undefined ? forceCurrentId : (message.swipe_id || 0);
 
     // Update counter - use the correct class name (swipes-counter, not deep-swipe-counter)
     // Update ALL counters found (there may be multiple due to DOM structure)
@@ -169,7 +177,9 @@ export function addSwipeNavigationToMessage(messageId) {
     let leftArrow = null;
     if (swipeCount > 1) {
         leftArrow = document.createElement('div');
-        leftArrow.className = 'swipe_left deep-swipe-left fa-solid fa-chevron-left';
+        if (!leftArrow) return; // Safety check
+        // Use 'deep-swipe-left' as the primary class, avoid 'swipe_left' to prevent native conflicts
+        leftArrow.className = 'deep-swipe-left fa-solid fa-chevron-left';
         leftArrow.title = 'Previous swipe';
         // Force visibility to override native SillyTavern hiding rules
         leftArrow.style.setProperty('display', 'flex', 'important');
@@ -195,14 +205,35 @@ export function addSwipeNavigationToMessage(messageId) {
                 return;
             }
 
+            // Save scroll position to prevent jump, and button position for adjustment
+            const scrollContainer = document.querySelector('#chat');
+            const savedScrollTop = scrollContainer?.scrollTop || 0;
+            const buttonRect = leftArrow.getBoundingClientRect();
+            const viewportOffset = buttonRect.top;
+
             if (dswipeBackFn) {
                 await dswipeBackFn({}, messageId);
+            }
+
+            // Immediately restore scroll position to counteract any jump from addOneMessage
+            // Then fine-tune to keep button in same viewport position
+            if (scrollContainer) {
+                scrollContainer.scrollTop = savedScrollTop;
+                requestAnimationFrame(() => {
+                    const newButton = document.querySelector(`.mes[mesid="${messageId}"] .deep-swipe-left`);
+                    if (newButton) {
+                        const newRect = newButton.getBoundingClientRect();
+                        const scrollDelta = newRect.top - viewportOffset;
+                        scrollContainer.scrollTop += scrollDelta;
+                    }
+                });
             }
         });
     }
 
     // Right arrow (next/generate) - use native swipe_right class for consistent styling
     const rightArrow = document.createElement('div');
+    if (!rightArrow) return; // Safety check
     rightArrow.className = 'swipe_right deep-swipe-right fa-solid fa-chevron-right';
     // Add assistant-swipe-arrow class for assistant messages to position them correctly
     if (!message.is_user) {
@@ -230,6 +261,10 @@ export function addSwipeNavigationToMessage(messageId) {
             return;
         }
 
+        // Save button position relative to viewport to keep it in same spot after swipe
+        const buttonRect = rightArrow.getBoundingClientRect();
+        const viewportOffset = buttonRect.top;
+
         const ctx = getContext();
         const currentChat = ctx.chat;
         const msg = currentChat[messageId];
@@ -243,6 +278,24 @@ export function addSwipeNavigationToMessage(messageId) {
         const totalSwipes = msg.swipes?.length || 1;
 
         if (currentId >= totalSwipes - 1) {
+            // GENERATE NEW SWIPE: Check for Prompt Inspector first
+            const promptInspectorEnabled = localStorage.getItem('promptInspectorEnabled') === 'true';
+            if (promptInspectorEnabled) {
+                toastr.error(
+                    'Deep Swipe generation is disabled while Prompt Inspector is enabled.\n\n' +
+                    'Please disable Prompt Inspector (click "Stop Inspecting" in the wand menu) to use Deep Swipe generation.',
+                    'Deep Swipe Blocked',
+                    { timeOut: 0, extendedTimeOut: 0, closeButton: true }
+                );
+                return;
+            }
+            
+            // Create overlay immediately BEFORE generation starts
+            // This shows the previous swipe content in a popup while new content generates
+            if (!msg.is_user) {
+                createSwipeOverlay(messageId, msg);
+            }
+            
             if (dswipeForwardFn) {
                 await dswipeForwardFn({}, messageId);
             }
@@ -250,6 +303,10 @@ export function addSwipeNavigationToMessage(messageId) {
             // CRITICAL FIX: Manually handle swipe navigation instead of relying on native swipe.right()
             // The native swipe.right() with forceSwipeId doesn't work reliably - it resets swipe_id to 0
             const targetSwipeId = currentId + 1;
+            
+            // Save scroll position BEFORE any operations to prevent jump
+            const scrollContainer = document.querySelector('#chat');
+            const savedScrollTop = scrollContainer?.scrollTop || 0;
 
             // For user messages, manually update swipe (SillyTavern blocks user message swipes)
             if (msg.is_user) {
@@ -284,6 +341,9 @@ export function addSwipeNavigationToMessage(messageId) {
                         updatedMsg.mes = updatedMsg.swipes[targetSwipeId];
                     }
 
+                    // Sync reasoning data from swipe_info
+                    syncReasoningFromSwipeInfo(updatedMsg, targetSwipeId);
+
                     // Re-render the message with the new swipe
                     ctx.addOneMessage(updatedMsg, {
                         type: 'swipe',
@@ -299,6 +359,18 @@ export function addSwipeNavigationToMessage(messageId) {
                 }
 
                 // Return early since we handled assistant messages above
+                // Restore scroll position to counteract jump, then fine-tune
+                if (scrollContainer) {
+                    scrollContainer.scrollTop = savedScrollTop;
+                    requestAnimationFrame(() => {
+                        const newButton = document.querySelector(`.mes[mesid="${messageId}"] .deep-swipe-right`);
+                        if (newButton) {
+                            const newRect = newButton.getBoundingClientRect();
+                            const scrollDelta = newRect.top - viewportOffset;
+                            scrollContainer.scrollTop += scrollDelta;
+                        }
+                    });
+                }
                 return;
             }
 
@@ -312,8 +384,21 @@ export function addSwipeNavigationToMessage(messageId) {
 
             // Update UI including reasoning
             updateMessageSwipeUI(messageId);
-            const { updateReasoningUI } = await import('../../../../scripts/reasoning.js');
-            updateReasoningUI(messageId, { reset: true });
+            // Note: addOneMessage already called updateReasoningUI, so we don't need to call it again
+            // Calling it with reset:true would clear the reasoning we just synced!
+
+            // Restore scroll position to counteract jump from addOneMessage, then fine-tune
+            if (scrollContainer) {
+                scrollContainer.scrollTop = savedScrollTop;
+                requestAnimationFrame(() => {
+                    const newButton = document.querySelector(`.mes[mesid="${messageId}"] .deep-swipe-right`);
+                    if (newButton) {
+                        const newRect = newButton.getBoundingClientRect();
+                        const scrollDelta = newRect.top - viewportOffset;
+                        scrollContainer.scrollTop += scrollDelta;
+                    }
+                });
+            }
         }
     });
 
@@ -347,8 +432,11 @@ export function addSwipeNavigationToMessage(messageId) {
     const mesBlock = messageElement.querySelector('.mes_block');
 
     if (mesBlock) {
-        // Insert left arrow before mes_block (like native swipe_left) - only if it exists
+        // Insert left arrow OUTSIDE mes_block, positioned at bottom left near avatar
         if (leftArrow) {
+            // Add class for positioning
+            leftArrow.classList.add('deep-swipe-left-outer');
+            // Insert left arrow before mes_block (as a sibling, not inside mes_block)
             mesBlock.insertAdjacentElement('beforebegin', leftArrow);
         }
 
@@ -378,6 +466,201 @@ export function addSwipeNavigationToMessage(messageId) {
 }
 
 /**
+ * Create a swipe overlay for "read while generating" feature
+ * This creates an overlay OUTSIDE the chat container that survives re-renders
+ * @param {number} messageId - The message ID
+ * @param {Object} message - The message object
+ */
+export function createSwipeOverlay(messageId, message, options = {}) {
+    const { showThrobber = true, onComplete = null, onStop = null } = options;
+    
+    // Get message element
+    const mesElement = document.querySelector(`.mes[mesid="${messageId}"]`);
+    if (!mesElement) return null;
+    
+    // Remove any existing overlay first
+    removeSwipeOverlay(messageId);
+    
+    // CLONE the entire message element for perfect styling match
+    const clone = mesElement.cloneNode(true);
+    
+    // Remove interactive elements from clone
+    clone.querySelectorAll('.deep-swipe-left, .deep-swipe-right, .swipe_right, .swipe_left, .swipes-counter').forEach(el => el.remove());
+    // Remove buttons but preserve reasoning-related buttons (mes_edit_add_reasoning)
+    clone.querySelectorAll('button, [role="button"], a, input, textarea, select').forEach(el => {
+        // Keep reasoning buttons to prevent reasoning.js errors
+        if (el.classList.contains('mes_edit_add_reasoning') ||
+            el.classList.contains('mes_reasoning_header') ||
+            el.closest('.mes_reasoning')) {
+            // For reasoning buttons, disable interaction but keep visible
+            el.style.pointerEvents = 'none';
+            return;
+        }
+        el.remove();
+    });
+    
+    // Ensure clone and all its children don't capture clicks
+    // The overlay has pointer-events: none, but we need to make sure children don't block either
+    clone.style.pointerEvents = 'none';
+    clone.querySelectorAll('*').forEach(el => {
+        el.style.pointerEvents = 'none';
+    });
+    
+    // Create wrapper for positioning - put it INSIDE the message element
+    const overlay = document.createElement('div');
+    overlay.id = `deep-swipe-overlay-${messageId}`;
+    overlay.className = 'deep-swipe-clone-overlay';
+    
+    // Add throbber/loading spinner if requested
+    if (showThrobber) {
+        const throbber = document.createElement('div');
+        throbber.className = 'deep-swipe-throbber';
+        throbber.id = `deep-swipe-throbber-${messageId}`;
+        overlay.appendChild(throbber);
+        
+        // Add stop generation button next to throbber (bottom right)
+        const stopButton = document.createElement('button');
+        stopButton.className = 'deep-swipe-stop-button';
+        stopButton.id = `deep-swipe-stop-${messageId}`;
+        stopButton.innerHTML = '<i class="fa-solid fa-stop"></i> Stop';
+        stopButton.title = 'Stop generation and revert';
+        stopButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            if (onStop) {
+                onStop();
+            }
+        });
+        overlay.appendChild(stopButton);
+    }
+    
+    // Add the cloned message
+    overlay.appendChild(clone);
+    
+    // Position absolute within the message element so it scrolls naturally
+    // The overlay covers the entire message
+    mesElement.style.position = 'relative';
+    overlay.style.cssText = `
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 1;
+        pointer-events: none;
+        overflow: hidden;
+    `;
+    
+    mesElement.appendChild(overlay);
+    
+    // Store reference with options
+    if (!window._deepSwipeOverlayPopups) {
+        window._deepSwipeOverlayPopups = {};
+    }
+    window._deepSwipeOverlayPopups[messageId] = {
+        element: overlay,
+        onComplete: onComplete,
+        isComplete: false
+    };
+    
+    return overlay;
+}
+
+/**
+ * Mark the swipe overlay as complete (generation finished)
+ * Shows completion message and optionally fades out
+ * @param {number} messageId - The message ID
+ * @param {Object} options - Completion options
+ * @param {boolean} options.autoFadeOut - Whether to auto-fade out after showing completion
+ * @param {number} options.fadeDelay - Delay before fading out (ms)
+ */
+export function completeSwipeOverlay(messageId, options = {}) {
+    const { autoFadeOut = false, fadeDelay = 1500 } = options;
+    
+    const overlayData = window._deepSwipeOverlayPopups?.[messageId];
+    if (!overlayData || overlayData.isComplete) return;
+    
+    const overlay = overlayData.element;
+    if (!overlay) return;
+    
+    overlayData.isComplete = true;
+    overlay.classList.add('complete');
+    
+    // Remove throbber
+    const throbber = overlay.querySelector(`#deep-swipe-throbber-${messageId}`);
+    if (throbber) {
+        throbber.remove();
+    }
+    
+    // Add completion message
+    const completionMsg = document.createElement('div');
+    completionMsg.className = 'deep-swipe-completion-message';
+    completionMsg.textContent = 'Next Swipe Generation Complete';
+    overlay.appendChild(completionMsg);
+    
+    // Call onComplete callback if provided
+    if (typeof overlayData.onComplete === 'function') {
+        overlayData.onComplete();
+    }
+    
+    // Auto fade out if requested
+    if (autoFadeOut) {
+        setTimeout(() => {
+            fadeOutAndRemoveSwipeOverlay(messageId);
+        }, fadeDelay);
+    }
+}
+
+/**
+ * Fade out and remove the swipe overlay
+ * @param {number} messageId - The message ID
+ * @param {number} fadeDuration - Duration of fade animation (ms)
+ */
+export function fadeOutAndRemoveSwipeOverlay(messageId, fadeDuration = 500) {
+    const overlayData = window._deepSwipeOverlayPopups?.[messageId];
+    if (!overlayData) return;
+    
+    const overlay = overlayData.element;
+    if (!overlay) {
+        delete window._deepSwipeOverlayPopups[messageId];
+        return;
+    }
+    
+    // Add fade-out class to trigger animation
+    overlay.classList.add('fade-out');
+    
+    // Remove after animation completes
+    setTimeout(() => {
+        removeSwipeOverlay(messageId);
+    }, fadeDuration);
+}
+
+/**
+ * Remove swipe overlay popup
+ * @param {number} messageId - The message ID
+ */
+export function removeSwipeOverlay(messageId) {
+    const overlayData = window._deepSwipeOverlayPopups?.[messageId];
+    if (overlayData) {
+        const overlay = overlayData.element || overlayData;
+        // Clean up scroll listener
+        if (overlay._cleanupScroll) {
+            overlay._cleanupScroll();
+        }
+        overlay.remove();
+        delete window._deepSwipeOverlayPopups[messageId];
+    }
+    // Also try by ID
+    const overlayById = document.getElementById(`deep-swipe-overlay-${messageId}`);
+    if (overlayById) {
+        if (overlayById._cleanupScroll) {
+            overlayById._cleanupScroll();
+        }
+        overlayById.remove();
+    }
+}
+
+/**
  * Remove all deep swipe UI components
  */
 export function removeAllDeepSwipeUI() {
@@ -388,6 +671,65 @@ export function removeAllDeepSwipeUI() {
     // Remove swipe counters that were added by our extension (they're inside swipeRightBlock)
     // Note: We can't easily distinguish our counters from native ones, so we let the
     // addSwipeNavigationToMessage function handle removal of existing UI before adding new
+}
+
+/**
+ * Add faint border highlight to message containing the latest swipe
+ * This helps users locate the message after generation completes
+ * Stays until user clicks, then fades out gracefully
+ * @param {number} messageId - The message ID to highlight
+ */
+export function highlightLatestSwipeMessage(messageId) {
+    // Remove any existing highlights first
+    removeLatestSwipeHighlight();
+    
+    // Add highlight to the target message
+    const mesElement = document.querySelector(`.mes[mesid="${messageId}"]`);
+    if (!mesElement) return;
+    
+    mesElement.classList.add('deep-swipe-latest-swipe');
+    
+    // Auto-remove highlight after animation completes (10s)
+    const autoRemoveTimeout = setTimeout(() => {
+        mesElement.classList.remove('deep-swipe-latest-swipe', 'fading-out');
+        if (mesElement._deepSwipeHighlightHandler) {
+            mesElement.removeEventListener('click', mesElement._deepSwipeHighlightHandler);
+            delete mesElement._deepSwipeHighlightHandler;
+        }
+    }, 10000);
+    
+    // Add click handler to fade out early (optional)
+    const clickHandler = () => {
+        clearTimeout(autoRemoveTimeout);
+        // Add fading-out class to trigger CSS transition
+        mesElement.classList.add('fading-out');
+        
+        // Remove classes after fade animation completes
+        setTimeout(() => {
+            mesElement.classList.remove('deep-swipe-latest-swipe', 'fading-out');
+        }, 500);
+        
+        // Remove this event listener
+        mesElement.removeEventListener('click', clickHandler);
+    };
+    
+    // Store handler reference so we can clean it up if needed
+    mesElement._deepSwipeHighlightHandler = clickHandler;
+    mesElement.addEventListener('click', clickHandler);
+}
+
+/**
+ * Remove the highlight from the latest swipe message
+ */
+export function removeLatestSwipeHighlight() {
+    document.querySelectorAll('.deep-swipe-latest-swipe').forEach(el => {
+        // Remove click handler if it exists
+        if (el._deepSwipeHighlightHandler) {
+            el.removeEventListener('click', el._deepSwipeHighlightHandler);
+            delete el._deepSwipeHighlightHandler;
+        }
+        el.classList.remove('deep-swipe-latest-swipe', 'fading-out');
+    });
 }
 
 /**
@@ -436,6 +778,34 @@ export function onMessageRendered(messageId) {
     if (settings.swipeNavigation) {
         addSwipeNavigationToMessage(messageId);
     }
+
+    // CRITICAL: Check if we need to inject a swipe overlay for this message
+    // This happens when an assistant message is being regenerated (deep swipe)
+    // We stored the original swipe content before truncation, now we need to
+    // overlay it on the re-rendered message so the user can "read while generating"
+    const overlayData = window._deepSwipeOverlays?.[messageId];
+
+    if (overlayData?.active) {
+        const mesElement = document.querySelector(`.mes[mesid="${messageId}"]`);
+        const mesTextElement = mesElement?.querySelector('.mes_text');
+
+        if (mesTextElement) {
+            // Always remove existing overlay first (in case it was partially rendered)
+            const existingOverlay = mesTextElement.querySelector('.deep-swipe-overlay');
+            if (existingOverlay) {
+                existingOverlay.remove();
+            }
+
+            // Create overlay with original swipe content
+            const swipeOverlay = document.createElement('div');
+            swipeOverlay.className = 'deep-swipe-overlay';
+            swipeOverlay.innerHTML = overlayData.content;
+
+            // Ensure relative positioning for overlay
+            mesTextElement.style.position = 'relative';
+            mesTextElement.appendChild(swipeOverlay);
+        }
+    }
 }
 
 /**
@@ -469,7 +839,22 @@ export function setupMutationObservers(context, onDeleteClick) {
                     if (node.nodeType === Node.ELEMENT_NODE && node.classList?.contains('mes')) {
                         const mesId = node.getAttribute('mesid');
                         if (mesId) {
-                            setTimeout(() => addSwipeNavigationToMessage(parseInt(mesId, 10)), 100);
+                            const messageId = parseInt(mesId, 10);
+                            setTimeout(() => addSwipeNavigationToMessage(messageId), 100);
+                            
+                            // CRITICAL: Check for overlay injection IMMEDIATELY when message is added to DOM
+                            // This is faster than waiting for CHARACTER_MESSAGE_RENDERED event
+                            const overlayData = window._deepSwipeOverlays?.[messageId];
+                            if (overlayData?.active) {
+                                const mesTextElement = node.querySelector('.mes_text');
+                                if (mesTextElement && !mesTextElement.querySelector('.deep-swipe-overlay')) {
+                                    const swipeOverlay = document.createElement('div');
+                                    swipeOverlay.className = 'deep-swipe-overlay';
+                                    swipeOverlay.innerHTML = overlayData.content;
+                                    mesTextElement.style.position = 'relative';
+                                    mesTextElement.appendChild(swipeOverlay);
+                                }
+                            }
                         }
                     }
                 }
