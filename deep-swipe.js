@@ -390,6 +390,10 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             for (let i = messageId; i < 100; i++) {
                 const el = document.querySelector(`.mes[mesid="${i}"]`);
                 if (el) {
+                    // Mark with deep-swipe-target so overlay can find it even when stale
+                    if (i === messageId) {
+                        el.setAttribute('data-deep-swipe-target', String(messageId));
+                    }
                     el.setAttribute('mesid', `stale-${i}`);
                 } else {
                     break;
