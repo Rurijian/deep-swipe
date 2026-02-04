@@ -278,7 +278,19 @@ export function addSwipeNavigationToMessage(messageId) {
         const totalSwipes = msg.swipes?.length || 1;
 
         if (currentId >= totalSwipes - 1) {
-            // GENERATE NEW SWIPE: Create overlay immediately BEFORE generation starts
+            // GENERATE NEW SWIPE: Check for Prompt Inspector first
+            const promptInspectorEnabled = localStorage.getItem('promptInspectorEnabled') === 'true';
+            if (promptInspectorEnabled) {
+                toastr.error(
+                    'Deep Swipe generation is disabled while Prompt Inspector is enabled.\n\n' +
+                    'Please disable Prompt Inspector (click "Stop Inspecting" in the wand menu) to use Deep Swipe generation.',
+                    'Deep Swipe Blocked',
+                    { timeOut: 0, extendedTimeOut: 0, closeButton: true }
+                );
+                return;
+            }
+            
+            // Create overlay immediately BEFORE generation starts
             // This shows the previous swipe content in a popup while new content generates
             if (!msg.is_user) {
                 createSwipeOverlay(messageId, msg);
