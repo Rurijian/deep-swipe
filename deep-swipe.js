@@ -700,8 +700,8 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
         // Only run cleanup if this is our generation that failed
         // (not if Prompt Inspector or another extension stopped it)
         if (!isOurGeneration) {
-            // Still remove event listeners and UI, but don't restore chat state
-            // since another extension is handling the cancellation
+            // External stop detected - chat may be in an inconsistent state
+            // Do minimal cleanup only and warn the user
             eventSource.removeListener(event_types.STREAM_REASONING_DONE, reasoningEventHandler);
             eventSource.removeListener(event_types.GENERATION_STOPPED, abortHandler);
             if (waitingToast) {
@@ -712,6 +712,9 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             }
             const { removeSwipeOverlay } = await import('./ui.js');
             removeSwipeOverlay(messageId);
+            
+            // Warn user about potential corruption
+            toastr.error('Generation was cancelled by another extension. Chat may be in an inconsistent state. Please refresh if you notice issues.', 'Deep Swipe Warning');
             throw err;
         }
 
