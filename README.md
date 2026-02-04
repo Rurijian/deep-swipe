@@ -4,6 +4,8 @@ A SillyTavern extension that allows you to swipe (regenerate) any message in you
 
 ![Alt text](Deep%20Swipe.png "Deep Swiping!")
 
+<video src="Deep-Swipe.mp4" width="600" controls></video>
+
 ## Features
 
 - **Deep Swipe**: Generate new swipes anywhere in the context! User or Assistant! It doesn't matter! Swipe everything!!
