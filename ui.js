@@ -503,7 +503,7 @@ export function createSwipeOverlay(messageId, message, options = {}) {
         el.style.pointerEvents = 'none';
     });
     
-    // Create wrapper for positioning - put it INSIDE the message element
+    // Create wrapper for positioning
     const overlay = document.createElement('div');
     overlay.id = `deep-swipe-overlay-${messageId}`;
     overlay.className = 'deep-swipe-clone-overlay';
@@ -534,30 +534,64 @@ export function createSwipeOverlay(messageId, message, options = {}) {
     // Add the cloned message
     overlay.appendChild(clone);
     
-    // Position absolute within the message element so it scrolls naturally
-    // The overlay covers the entire message
-    mesElement.style.position = 'relative';
+    // Get the message's position relative to the chat container
+    const chatContainer = document.querySelector('#chat');
+    if (!chatContainer) return null;
+    
+    // Calculate position relative to chat container
+    const mesRect = mesElement.getBoundingClientRect();
+    const chatRect = chatContainer.getBoundingClientRect();
+    const relativeTop = mesRect.top - chatRect.top + chatContainer.scrollTop;
+    
+    // Position the overlay in the chat container with fixed-like positioning
+    // This ensures it stays visible even if the message element is replaced
     overlay.style.cssText = `
         position: absolute;
-        left: 0;
-        top: 0;
-        width: 100%;
-        height: 100%;
-        z-index: 1;
+        left: ${mesRect.left - chatRect.left}px;
+        top: ${relativeTop}px;
+        width: ${mesRect.width}px;
+        height: ${mesRect.height}px;
+        z-index: 10000;
         pointer-events: none;
         overflow: hidden;
     `;
     
-    mesElement.appendChild(overlay);
+    // Append to chat container instead of message element
+    // This way the overlay survives message element replacement
+    chatContainer.appendChild(overlay);
     
-    // Store reference with options
+    // Store reference with options and scroll handler
     if (!window._deepSwipeOverlayPopups) {
         window._deepSwipeOverlayPopups = {};
     }
+    
+    // Create scroll handler to update overlay position
+    const scrollHandler = () => {
+        const overlayData = window._deepSwipeOverlayPopups?.[messageId];
+        if (!overlayData || overlayData.isComplete) return;
+        
+        // Try to find the message element (may have been replaced)
+        const currentMes = document.querySelector(`.mes[mesid="${messageId}"]`);
+        if (currentMes) {
+            const newRect = currentMes.getBoundingClientRect();
+            const newChatRect = chatContainer.getBoundingClientRect();
+            const newRelativeTop = newRect.top - newChatRect.top + chatContainer.scrollTop;
+            
+            overlay.style.left = `${newRect.left - newChatRect.left}px`;
+            overlay.style.top = `${newRelativeTop}px`;
+            overlay.style.width = `${newRect.width}px`;
+            overlay.style.height = `${newRect.height}px`;
+        }
+    };
+    
+    chatContainer.addEventListener('scroll', scrollHandler);
+    
     window._deepSwipeOverlayPopups[messageId] = {
         element: overlay,
         onComplete: onComplete,
-        isComplete: false
+        isComplete: false,
+        scrollHandler: scrollHandler,
+        chatContainer: chatContainer
     };
     
     return overlay;
@@ -640,10 +674,16 @@ export function removeSwipeOverlay(messageId) {
     const overlayData = window._deepSwipeOverlayPopups?.[messageId];
     if (overlayData) {
         const overlay = overlayData.element || overlayData;
-        // Clean up scroll listener
+        
+        // Clean up scroll listener (new approach with external positioning)
+        if (overlayData.scrollHandler && overlayData.chatContainer) {
+            overlayData.chatContainer.removeEventListener('scroll', overlayData.scrollHandler);
+        }
+        // Legacy cleanup for old overlays
         if (overlay._cleanupScroll) {
             overlay._cleanupScroll();
         }
+        
         overlay.remove();
         delete window._deepSwipeOverlayPopups[messageId];
     }
