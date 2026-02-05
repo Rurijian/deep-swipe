@@ -469,10 +469,30 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
         }
 
         // Find and remove temp messages
+        const removedMesIds = [];
         for (let i = chat.length - 1; i >= 0; i--) {
             if (chat[i]?.extra?.isDeepSwipeTemp) {
+                removedMesIds.push(i);
                 chat.splice(i, 1);
             }
+        }
+
+        // CRITICAL: Remove DOM elements for messages that were removed from chat array
+        // The assistant message and temp messages have DOM elements that must be cleaned up
+        const chatElement = document.getElementById('chat');
+        if (chatElement) {
+            // Remove DOM elements that no longer have corresponding chat entries
+            // This handles both the generated assistant message and temp messages
+            const messageElements = chatElement.querySelectorAll('.mes');
+            messageElements.forEach(el => {
+                const mesId = parseInt(el.getAttribute('mesid'), 10);
+                // Remove if mesId is >= current chat length (these were temp/generated messages)
+                // or if the message at that index no longer exists
+                if (!isNaN(mesId) && (mesId >= chat.length || !chat[mesId])) {
+                    console.log(`[Deep Swipe] Removing orphaned DOM element for mesid ${mesId}`);
+                    el.remove();
+                }
+            });
         }
 
         // Try to get reasoning from stream event first (more reliable during streaming)
