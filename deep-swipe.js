@@ -676,7 +676,11 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             // Update reasoning UI for the new swipe
             if (newSwipeInfo?.extra?.reasoning) {
                 setTimeout(() => {
-                    updateReasoningUI(messageId);
+                    // Safety check: ensure message element exists before updating reasoning
+                    const mesElement = document.querySelector(`.mes[mesid="${messageId}"]`);
+                    if (mesElement) {
+                        updateReasoningUI(messageId);
+                    }
                 }, 100);
             }
         } else {
