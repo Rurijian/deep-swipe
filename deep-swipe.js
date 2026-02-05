@@ -486,6 +486,23 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             }
         }
 
+        // CRITICAL: Remove orphaned DOM elements without full chat reload
+        // After array cleanup, any DOM element with mesid >= chat.length is orphaned
+        // (these were the temp message and generated assistant message)
+        const chatElement = document.getElementById('chat');
+        if (chatElement) {
+            const messageElements = chatElement.querySelectorAll('.mes');
+            messageElements.forEach(el => {
+                const mesId = parseInt(el.getAttribute('mesid'), 10);
+                // Remove if mesId is >= current chat length (orphaned element)
+                // AND the element's message no longer exists in chat
+                if (!isNaN(mesId) && mesId >= chat.length) {
+                    console.log(`[Deep Swipe] Removing orphaned DOM element for mesid ${mesId}`);
+                    el.remove();
+                }
+            });
+        }
+
         // Try to get reasoning from stream event first (more reliable during streaming)
         if (streamingReasoningData?.reasoning) {
             capturedReasoning = streamingReasoningData.reasoning;
