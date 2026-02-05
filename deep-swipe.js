@@ -373,6 +373,19 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             // - Generate creates a new response
             // - Capture that response as a new swipe on the target
             
+            // CRITICAL: Store original swipe content for overlay injection during generation
+            // This allows user to "read while generating" the new swipe
+            const mesTextElement = document.querySelector(`.mes[mesid="${messageId}"] .mes_text`);
+            if (mesTextElement) {
+                if (!window._deepSwipeOverlays) {
+                    window._deepSwipeOverlays = {};
+                }
+                window._deepSwipeOverlays[messageId] = {
+                    active: true,
+                    content: mesTextElement.innerHTML
+                };
+            }
+            
             // Find the last user message before the target (to set proper context)
             let lastUserMessageId = -1;
             for (let i = messageId - 1; i >= 0; i--) {
@@ -610,6 +623,11 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
                 removeSwipeOverlay(messageId);
             }, 1500);
         }
+        
+        // Clean up the deep swipe overlay data
+        if (window._deepSwipeOverlays?.[messageId]) {
+            delete window._deepSwipeOverlays[messageId];
+        }
 
         // Add faint border highlight to the message with the latest swipe
         // This helps users locate the message after generation
@@ -742,6 +760,11 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             const { removeSwipeOverlay } = await import('./ui.js');
             removeSwipeOverlay(messageId);
             
+            // Clean up overlay data
+            if (window._deepSwipeOverlays?.[messageId]) {
+                delete window._deepSwipeOverlays[messageId];
+            }
+            
             // Warn user about potential corruption
             toastr.error('Generation was cancelled by another extension. Chat may be in an inconsistent state. Please refresh if you notice issues.', 'Deep Swipe Warning');
             throw err;
@@ -791,6 +814,11 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             // Remove overlay
             const { removeSwipeOverlay } = await import('./ui.js');
             removeSwipeOverlay(messageId);
+            
+            // Clean up overlay data
+            if (window._deepSwipeOverlays?.[messageId]) {
+                delete window._deepSwipeOverlays[messageId];
+            }
 
             // Revert swipe - use appropriate message reference
             const revertTarget = isUserMessage ? message : (originalTargetMessage || chat[messageId]);
