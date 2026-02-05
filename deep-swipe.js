@@ -378,18 +378,17 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
                 }
             }
             
-            // Store original message count for later cleanup
-            const originalChatLength = chat.length;
-            
-            // Truncate to just before the target message (removes target from context)
-            chat.length = messageId;
-            
-            // Mark target element for overlay positioning but DON'T mark as stale
-            // The overlay needs the element to stay at its position
+            // CRITICAL: Mark target element as stale BEFORE generation
+            // This prevents Generate() from finding and updating the wrong element
+            // The overlay (created above) shows the content, so user doesn't see it disappear
             const targetElement = document.querySelector(`.mes[mesid="${messageId}"]`);
             if (targetElement) {
                 targetElement.setAttribute('data-deep-swipe-target', String(messageId));
+                targetElement.setAttribute('mesid', `stale-${messageId}`);
             }
+            
+            // Truncate to just before the target message (removes target from context)
+            chat.length = messageId;
             
             // Mark messages AFTER target as stale so Generate() doesn't find them
             for (let i = messageId + 1; i < 100; i++) {
@@ -497,8 +496,8 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
 
         // Restore the mesid attributes after restoring messages
         // For user swipes: restore from messageId + 1
-        // For assistant swipes: restore from messageId + 1 (target was kept in DOM)
-        const restoreStartIndex = messageId + 1;
+        // For assistant swipes: restore from messageId (target was also marked stale)
+        const restoreStartIndex = isUserMessage ? messageId + 1 : messageId;
         for (let i = restoreStartIndex; i < 100; i++) {
             const el = document.querySelector(`.mes[mesid="stale-${i}"]`);
             if (el) {
