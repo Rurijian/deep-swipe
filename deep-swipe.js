@@ -366,10 +366,11 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
                 automatic_trigger: true,
             });
         } else {
-            // ASSISTANT MESSAGE: Generate at bottom like user swipes
-            // This keeps the target message visible via overlay while new content streams below
+            // ASSISTANT MESSAGE: Regenerate in-place (original working approach)
+            // The createSwipeOverlay (called above) shows previous swipe via fixed-position clone
+            // This survives DOM changes and allows "read while generating"
             
-            // Find the last user message before the target to set context
+            // Find the last user message before the target (to set proper context)
             let lastUserMessageId = -1;
             for (let i = messageId - 1; i >= 0; i--) {
                 if (chat[i].is_user) {
@@ -378,19 +379,19 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
                 }
             }
             
-            // CRITICAL: Mark target element as stale BEFORE generation
-            // This prevents Generate() from finding and updating the wrong element
-            // The overlay (created above) shows the content, so user doesn't see it disappear
+            // Truncate to just before the target message
+            // This removes the target from context so Generate() creates a new response
+            chat.length = messageId;
+            
+            // Mark the target element's mesid as stale so Generate() creates fresh element
+            // The overlay (created above) keeps the old content visible
             const targetElement = document.querySelector(`.mes[mesid="${messageId}"]`);
             if (targetElement) {
                 targetElement.setAttribute('data-deep-swipe-target', String(messageId));
                 targetElement.setAttribute('mesid', `stale-${messageId}`);
             }
             
-            // Truncate to just before the target message (removes target from context)
-            chat.length = messageId;
-            
-            // Mark messages AFTER target as stale so Generate() doesn't find them
+            // Mark messages AFTER target as stale so Generate() doesn't update them
             for (let i = messageId + 1; i < 100; i++) {
                 const el = document.querySelector(`.mes[mesid="${i}"]`);
                 if (el) {
@@ -400,23 +401,12 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
                 }
             }
             
-            // CRITICAL: Append a temp user message as context anchor
-            // This forces Generate() to create a new message at the bottom
-            const tempContextMessage = {
-                name: userName,
-                is_user: true,
-                mes: '[Continuing conversation...]',
-                send_date: new Date().toISOString(),
-                extra: { isSmallSys: true, isDeepSwipeTemp: true },
-            };
-            chat.push(tempContextMessage);
-            
-            console.log('[Deep Swipe] Assistant swipe: generating at bottom, context length:', chat.length);
-            // Generate assistant response (creates new message at bottom)
+            console.log('[Deep Swipe] Assistant swipe: calling Generate() after truncating to', chat.length);
+            // Generate assistant response (creates new element at target position)
             await Generate('normal', {
                 automatic_trigger: true,
             });
-            console.log('[Deep Swipe] Assistant swipe: generation complete');
+            console.log('[Deep Swipe] Assistant swipe: Generate() completed');
         }
 
         generationFinished = new Date();
