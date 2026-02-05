@@ -812,34 +812,9 @@ export function onMessageRendered(messageId) {
         addSwipeNavigationToMessage(messageId);
     }
 
-    // CRITICAL: Check if we need to inject a swipe overlay for this message
-    // This happens when an assistant message is being regenerated (deep swipe)
-    // We stored the original swipe content before truncation, now we need to
-    // overlay it on the re-rendered message so the user can "read while generating"
-    const overlayData = window._deepSwipeOverlays?.[messageId];
-
-    if (overlayData?.active) {
-        const mesElement = document.querySelector(`.mes[mesid="${messageId}"]`);
-        const mesBlockElement = mesElement?.querySelector('.mes_block');
-
-        if (mesBlockElement) {
-            // Always remove existing overlay first (in case it was partially rendered)
-            const existingOverlay = mesElement.querySelector('.deep-swipe-overlay');
-            if (existingOverlay) {
-                existingOverlay.remove();
-            }
-
-            // Create overlay with original swipe content
-            // Position as sibling of mes_block (outside mes_text) to isolate from DOM updates
-            const swipeOverlay = document.createElement('div');
-            swipeOverlay.className = 'deep-swipe-overlay';
-            swipeOverlay.innerHTML = overlayData.content;
-
-            // Position absolutely over the message block
-            mesElement.style.position = 'relative';
-            mesBlockElement.parentNode.insertBefore(swipeOverlay, mesBlockElement.nextSibling);
-        }
-    }
+    // NOTE: The swipe overlay for "read while generating" is handled by createSwipeOverlay()
+    // which creates a fixed-position clone outside the chat. This survives DOM changes
+    // and works for both user and assistant swipes. No additional overlay injection needed.
 }
 
 /**
@@ -876,19 +851,8 @@ export function setupMutationObservers(context, onDeleteClick) {
                             const messageId = parseInt(mesId, 10);
                             setTimeout(() => addSwipeNavigationToMessage(messageId), 100);
                             
-                            // CRITICAL: Check for overlay injection IMMEDIATELY when message is added to DOM
-                            // This is faster than waiting for CHARACTER_MESSAGE_RENDERED event
-                            const overlayData = window._deepSwipeOverlays?.[messageId];
-                            if (overlayData?.active) {
-                                const mesBlockElement = node.querySelector('.mes_block');
-                                if (mesBlockElement && !node.querySelector('.deep-swipe-overlay')) {
-                                    const swipeOverlay = document.createElement('div');
-                                    swipeOverlay.className = 'deep-swipe-overlay';
-                                    swipeOverlay.innerHTML = overlayData.content;
-                                    node.style.position = 'relative';
-                                    mesBlockElement.parentNode.insertBefore(swipeOverlay, mesBlockElement.nextSibling);
-                                }
-                            }
+                            // NOTE: Overlay injection is not needed here.
+                            // createSwipeOverlay() creates a fixed-position clone that survives DOM changes.
                         }
                     }
                 }

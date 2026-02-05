@@ -366,27 +366,10 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
                 automatic_trigger: true,
             });
         } else {
-            // ASSISTANT MESSAGE: Regenerate like a native swipe
-            // - Remove the target assistant message from chat context
-            // - Find the last user message before it
-            // - Truncate to that user message (context before the target)
-            // - Generate creates a new response
-            // - Capture that response as a new swipe on the target
+            // ASSISTANT MESSAGE: Generate at bottom like user swipes
+            // This keeps the target message visible via overlay while new content streams below
             
-            // CRITICAL: Store original swipe content for overlay injection during generation
-            // This allows user to "read while generating" the new swipe
-            const mesTextElement = document.querySelector(`.mes[mesid="${messageId}"] .mes_text`);
-            if (mesTextElement) {
-                if (!window._deepSwipeOverlays) {
-                    window._deepSwipeOverlays = {};
-                }
-                window._deepSwipeOverlays[messageId] = {
-                    active: true,
-                    content: mesTextElement.innerHTML
-                };
-            }
-            
-            // Find the last user message before the target (to set proper context)
+            // Find the last user message before the target to set context
             let lastUserMessageId = -1;
             for (let i = messageId - 1; i >= 0; i--) {
                 if (chat[i].is_user) {
@@ -395,30 +378,46 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
                 }
             }
             
-            // Truncate to just before the target message
-            // This removes the target from context so Generate() creates a new response
+            // Store original message count for later cleanup
+            const originalChatLength = chat.length;
+            
+            // Truncate to just before the target message (removes target from context)
             chat.length = messageId;
             
-            // CRITICAL: Invalidate stale DOM elements' mesid for removed messages
-            for (let i = messageId; i < 100; i++) {
+            // Mark target element for overlay positioning but DON'T mark as stale
+            // The overlay needs the element to stay at its position
+            const targetElement = document.querySelector(`.mes[mesid="${messageId}"]`);
+            if (targetElement) {
+                targetElement.setAttribute('data-deep-swipe-target', String(messageId));
+            }
+            
+            // Mark messages AFTER target as stale so Generate() doesn't find them
+            for (let i = messageId + 1; i < 100; i++) {
                 const el = document.querySelector(`.mes[mesid="${i}"]`);
                 if (el) {
-                    // Mark with deep-swipe-target so overlay can find it even when stale
-                    if (i === messageId) {
-                        el.setAttribute('data-deep-swipe-target', String(messageId));
-                    }
                     el.setAttribute('mesid', `stale-${i}`);
                 } else {
                     break;
                 }
             }
             
-            console.log('[Deep Swipe] Assistant swipe: calling Generate() after truncating to', chat.length);
-            // Generate assistant response (continues from the last message before target)
+            // CRITICAL: Append a temp user message as context anchor
+            // This forces Generate() to create a new message at the bottom
+            const tempContextMessage = {
+                name: userName,
+                is_user: true,
+                mes: '[Continuing conversation...]',
+                send_date: new Date().toISOString(),
+                extra: { isSmallSys: true, isDeepSwipeTemp: true },
+            };
+            chat.push(tempContextMessage);
+            
+            console.log('[Deep Swipe] Assistant swipe: generating at bottom, context length:', chat.length);
+            // Generate assistant response (creates new message at bottom)
             await Generate('normal', {
                 automatic_trigger: true,
             });
-            console.log('[Deep Swipe] Assistant swipe: Generate() completed');
+            console.log('[Deep Swipe] Assistant swipe: generation complete');
         }
 
         generationFinished = new Date();
@@ -483,12 +482,13 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
 
         // Restore hidden messages FIRST (before restoring mesid attributes)
         // User swipes: truncate to messageId + 1, insert after target
-        // Assistant swipes: truncate to messageId (removed target), need to re-insert target then messages after
+        // Assistant swipes: truncate to messageId, messages after were already in chat, just need reinsertion
         if (isUserMessage) {
             // User swipes: insert messages after target
             chat.splice(messageId + 1, 0, ...originalMessagesAfter);
         } else {
-            // Assistant swipes: re-insert target message, then messages after it
+            // Assistant swipes (new flow): just re-insert messages after the target
+            // Target was never removed from DOM, only from chat array for context
             if (originalTargetMessage) {
                 chat.splice(messageId, 0, originalTargetMessage);
             }
@@ -497,8 +497,8 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
 
         // Restore the mesid attributes after restoring messages
         // For user swipes: restore from messageId + 1
-        // For assistant swipes: restore from messageId (since target was removed and re-inserted)
-        const restoreStartIndex = isUserMessage ? messageId + 1 : messageId;
+        // For assistant swipes: restore from messageId + 1 (target was kept in DOM)
+        const restoreStartIndex = messageId + 1;
         for (let i = restoreStartIndex; i < 100; i++) {
             const el = document.querySelector(`.mes[mesid="stale-${i}"]`);
             if (el) {
@@ -625,10 +625,7 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             }, 1500);
         }
         
-        // Clean up the deep swipe overlay data and DOM element
-        if (window._deepSwipeOverlays?.[messageId]) {
-            delete window._deepSwipeOverlays[messageId];
-        }
+        // Clean up the inline swipe overlay DOM element if it exists
         removeInlineSwipeOverlay(messageId);
 
         // Add faint border highlight to the message with the latest swipe
@@ -759,14 +756,8 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             if (mesElement) {
                 mesElement.classList.remove('deep-swipe-loading');
             }
-            const { removeSwipeOverlay, removeInlineSwipeOverlay } = await import('./ui.js');
+            const { removeSwipeOverlay } = await import('./ui.js');
             removeSwipeOverlay(messageId);
-            
-            // Clean up overlay data and DOM element
-            if (window._deepSwipeOverlays?.[messageId]) {
-                delete window._deepSwipeOverlays[messageId];
-            }
-            removeInlineSwipeOverlay(messageId);
             
             // Warn user about potential corruption
             toastr.error('Generation was cancelled by another extension. Chat may be in an inconsistent state. Please refresh if you notice issues.', 'Deep Swipe Warning');
@@ -815,14 +806,8 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             }
             
             // Remove overlay
-            const { removeSwipeOverlay, removeInlineSwipeOverlay } = await import('./ui.js');
+            const { removeSwipeOverlay } = await import('./ui.js');
             removeSwipeOverlay(messageId);
-            
-            // Clean up overlay data and DOM element
-            if (window._deepSwipeOverlays?.[messageId]) {
-                delete window._deepSwipeOverlays[messageId];
-            }
-            removeInlineSwipeOverlay(messageId);
 
             // Revert swipe - use appropriate message reference
             const revertTarget = isUserMessage ? message : (originalTargetMessage || chat[messageId]);
