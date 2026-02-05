@@ -661,7 +661,17 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
                 }
             }
 
+            // CRITICAL: Ensure mesid is restored on DOM element before re-rendering
+            const targetElement = document.querySelector(`.mes[data-deep-swipe-target="${messageId}"]`);
+            if (targetElement) {
+                targetElement.setAttribute('mesid', String(messageId));
+                targetElement.removeAttribute('data-deep-swipe-target');
+            }
+            
             // Re-render to show the new swipe
+            // Use a small delay to ensure DOM is ready
+            await new Promise(resolve => setTimeout(resolve, 50));
+            
             context.addOneMessage(targetMessage, {
                 type: 'swipe',
                 forceId: messageId,
