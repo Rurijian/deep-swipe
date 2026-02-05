@@ -52,7 +52,7 @@ export function formatSwipeCounter(current, total) {
 }
 
 /**
- * Sync reasoning data from swipe_info to message extra
+ * Sync reasoning and model data from swipe_info to message extra
  * @param {Object} message - The message object
  * @param {number} swipeId - The swipe ID to sync from
  */
@@ -83,6 +83,14 @@ export function syncReasoningFromSwipeInfo(message, swipeId) {
         message.extra.reasoning_type = swipeInfo.extra.reasoning_type;
     } else {
         delete message.extra.reasoning_type;
+    }
+
+    // Sync API and model data for model icon display
+    if (swipeInfo.extra?.api !== undefined) {
+        message.extra.api = swipeInfo.extra.api;
+    }
+    if (swipeInfo.extra?.model !== undefined) {
+        message.extra.model = swipeInfo.extra.model;
     }
 }
 

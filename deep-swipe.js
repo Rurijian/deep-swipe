@@ -9,11 +9,67 @@
  */
 
 import { getContext } from '../../../extensions.js';
-import { Generate, eventSource, event_types, cancelDebouncedChatSave, saveChatConditional, stopGeneration } from '../../../../script.js';
+import { Generate, eventSource, event_types, cancelDebouncedChatSave, saveChatConditional, stopGeneration, main_api } from '../../../../script.js';
 import { updateReasoningUI, ReasoningType } from '../../../../scripts/reasoning.js';
 import { getSettings, EXTENSION_NAME } from './config.js';
 import { syncReasoningFromSwipeInfo, error, isValidMessageId } from './utils.js';
 import { updateMessageSwipeUI } from './ui.js';
+
+/**
+ * Get the current API and model information for swipe storage
+ * This ensures model icons display correctly when navigating swipes
+ * @returns {{api: string, model: string}} The current API and model
+ */
+async function getCurrentApiAndModel() {
+    // Import getGeneratingModel dynamically to avoid circular dependencies
+    const { getGeneratingModel } = await import('../../../../script.js');
+    
+    const api = main_api;
+    let model = '';
+    
+    switch (api) {
+        case 'openai':
+            // For OpenAI, import and use getChatCompletionModel
+            try {
+                const { getChatCompletionModel } = await import('../../../../scripts/openai.js');
+                model = getChatCompletionModel();
+            } catch (e) {
+                console.warn(`[${EXTENSION_NAME}] Could not get OpenAI model:`, e);
+                model = 'unknown';
+            }
+            break;
+        case 'kobold':
+        case 'textgenerationwebui':
+            // These use online_status for model name
+            try {
+                const scriptModule = await import('../../../../script.js');
+                model = scriptModule.online_status || 'unknown';
+            } catch (e) {
+                model = 'unknown';
+            }
+            break;
+        case 'novel':
+            try {
+                const { nai_settings } = await import('../../../../scripts/nai-settings.js');
+                model = nai_settings?.model_novel || 'unknown';
+            } catch (e) {
+                model = 'unknown';
+            }
+            break;
+        case 'koboldhorde':
+            try {
+                const { kobold_horde_model } = await import('../../../../script.js');
+                model = kobold_horde_model || 'unknown';
+            } catch (e) {
+                model = 'unknown';
+            }
+            break;
+        default:
+            model = getGeneratingModel() || 'unknown';
+    }
+    
+    return { api, model };
+}
 
 /**
  * Handle navigating back on a user message
@@ -564,10 +620,17 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
                 }
             }
 
+            // Get current API and model for the swipe info (needed for model icon display)
+            const { api: currentApi, model: currentModel } = await getCurrentApiAndModel();
+
             // Create swipe_info entry with reasoning data
             const swipeInfoExtra = {
                 ...structuredClone(actualTargetMessage.extra || {}),
             };
+
+            // Store API and model for model icon display when navigating swipes
+            swipeInfoExtra.api = currentApi;
+            swipeInfoExtra.model = currentModel;
 
             if (capturedReasoning) {
                 swipeInfoExtra.reasoning = capturedReasoning;
