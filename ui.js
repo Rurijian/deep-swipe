@@ -534,8 +534,8 @@ export function createSwipeOverlay(messageId, message, options = {}) {
     // Add the cloned message
     overlay.appendChild(clone);
     
-    // Use FIXED positioning relative to viewport
-    // This keeps the overlay in place even when message element is replaced
+    // Use FIXED positioning relative to viewport initially
+    // But update position on scroll to simulate scrolling with content
     const mesRect = mesElement.getBoundingClientRect();
     
     overlay.style.cssText = `
@@ -551,6 +551,23 @@ export function createSwipeOverlay(messageId, message, options = {}) {
     
     // Append to body so it's not affected by DOM changes in chat
     document.body.appendChild(overlay);
+    
+    // Add scroll listener to update overlay position as chat scrolls
+    const chatElement = document.getElementById('chat');
+    const updateOverlayPosition = () => {
+        const newMesRect = mesElement.getBoundingClientRect();
+        overlay.style.left = `${newMesRect.left}px`;
+        overlay.style.top = `${newMesRect.top}px`;
+        overlay.style.width = `${newMesRect.width}px`;
+        overlay.style.height = `${newMesRect.height}px`;
+    };
+    
+    chatElement.addEventListener('scroll', updateOverlayPosition);
+    
+    // Store cleanup function for when overlay is removed
+    overlay._cleanupScroll = () => {
+        chatElement.removeEventListener('scroll', updateOverlayPosition);
+    };
     
     // Store reference with options
     if (!window._deepSwipeOverlayPopups) {
