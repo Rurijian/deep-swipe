@@ -233,10 +233,15 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
     // Save original messages after target BEFORE any modifications
     // We push a temp message at the end, so these need to be re-inserted after generation
     // CRITICAL: Deep clone messages after to prevent generation/streaming from modifying them
-    const originalMessagesAfter = JSON.parse(JSON.stringify(chat.slice(messageId + 1)));
+    const rawSlice = chat.slice(messageId + 1);
+    console.log('[Deep Swipe] Raw chat.slice:', rawSlice.length, 'messages');
+    rawSlice.forEach((msg, i) => {
+        console.log(`[Deep Swipe]   Raw [${i}]:`, msg?.mes?.substring(0, 50), 'is_user:', msg?.is_user);
+    });
+    const originalMessagesAfter = JSON.parse(JSON.stringify(rawSlice));
     console.log('[Deep Swipe] Captured originalMessagesAfter:', originalMessagesAfter.length, 'messages');
     originalMessagesAfter.forEach((msg, i) => {
-        console.log(`[Deep Swipe]   Message ${i}:`, msg.mes?.substring(0, 50), 'is_user:', msg.is_user);
+        console.log(`[Deep Swipe]   Captured [${i}]:`, msg.mes?.substring(0, 50), 'is_user:', msg.is_user);
     });
     // Keep reference to target message for storing the swipe (still at chat[messageId])
     // Don't clone this - we need to modify the actual message object for swipe management
@@ -363,12 +368,22 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
         }
         console.log('[Deep-Swipe-Cleanup] After class removal - chat[2]:', chat[2]?.mes?.substring(0, 20));
         
-        // Remove overlay
-        console.log('[Deep-Swipe-Cleanup] About to import ui.js - chat[2]:', chat[2]?.mes?.substring(0, 20));
-        const { removeSwipeOverlay } = await import('./ui.js');
-        console.log('[Deep-Swipe-Cleanup] After import - chat[2]:', chat[2]?.mes?.substring(0, 20));
-        removeSwipeOverlay(messageId);
-        console.log('[Deep-Swipe-Cleanup] After removeSwipeOverlay - chat[2]:', chat[2]?.mes?.substring(0, 20));
+        // Remove overlay - inline the logic to avoid importing ui.js (which loads config.js -> script.js)
+        console.log('[Deep-Swipe-Cleanup] About to remove overlay - chat[2]:', chat[2]?.mes?.substring(0, 20));
+        const overlayById = document.getElementById(`deep-swipe-overlay-${messageId}`);
+        if (overlayById) {
+            overlayById.remove();
+        }
+        if (window._deepSwipeOverlayPopups?.[messageId]) {
+            const overlayData = window._deepSwipeOverlayPopups[messageId];
+            const overlay = overlayData.element || overlayData;
+            if (overlay._cleanupScroll) {
+                overlay._cleanupScroll();
+            }
+            overlay.remove();
+            delete window._deepSwipeOverlayPopups[messageId];
+        }
+        console.log('[Deep-Swipe-Cleanup] After overlay removal - chat[2]:', chat[2]?.mes?.substring(0, 20));
         console.log('[Deep-Swipe-Cleanup] Overlay removed');
         
         // Check chat array after overlay removal
