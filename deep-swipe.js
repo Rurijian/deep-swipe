@@ -108,10 +108,11 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
     let isOurGeneration = true;
 
     // DEBUG: Log actual chat state at very start (before any modifications)
-    console.log('[Deep Swipe] ACTUAL CHAT STATE at function start:');
+    console.log('[DEEP_SWIPE_START] ========== FUNCTION START ==========');
     for (let i = 0; i < chat.length; i++) {
-        console.log(`[Deep Swipe]   chat[${i}]: mes="${chat[i]?.mes?.substring(0, 30)}" is_user=${chat[i]?.is_user}`);
+        console.log(`[DEEP_SWIPE_START] chat[${i}]: mes="${chat[i]?.mes?.substring(0, 30)}" is_user=${chat[i]?.is_user}`);
     }
+    console.log('[DEEP_SWIPE_START] ========== END START STATE ==========');
 
     // CRITICAL: Capture ALL original data BEFORE any truncation or modifications
     // For assistant swipes, truncation removes the target, so we MUST capture first
@@ -193,10 +194,15 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
     const capturedMessagesAfter = chatSnapshot.slice(messageId + 1);
     
     // IMMEDIATE CHECK: Log what we actually captured
-    console.log('[Deep Swipe] IMMEDIATE CHECK after capture:');
+    console.log('[DEEP_SWIPE_CAPTURE] ========== CAPTURED DATA ==========');
     for (let i = 0; i < chatSnapshot.length; i++) {
-        console.log(`[Deep Swipe]   chatSnapshot[${i}]: mes="${chatSnapshot[i]?.mes?.substring(0, 30)}"`);
+        console.log(`[DEEP_SWIPE_CAPTURE] chatSnapshot[${i}]: mes="${chatSnapshot[i]?.mes?.substring(0, 30)}"`);
     }
+    console.log('[DEEP_SWIPE_CAPTURE] capturedMessagesAfter length:', capturedMessagesAfter.length);
+    capturedMessagesAfter.forEach((msg, i) => {
+        console.log(`[DEEP_SWIPE_CAPTURE] capturedMessagesAfter[${i}]: mes="${msg.mes?.substring(0, 30)}"`);
+    });
+    console.log('[DEEP_SWIPE_CAPTURE] ========== END CAPTURED DATA ==========');
     
     console.log('[Deep Swipe] Starting generation:', {
         isUserMessage,
@@ -402,10 +408,11 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
         });
         
         // CRITICAL: Log final state before function returns
-        console.log('[Deep-Swipe-Cleanup] FINAL CHAT STATE before return:');
+        console.log('[DEEP_SWIPE_CLEANUP_END] ========== CLEANUP END ==========');
         for (let i = 0; i < chat.length; i++) {
-            console.log(`[Deep-Swipe-Cleanup]   chat[${i}]: mes="${chat[i]?.mes?.substring(0, 30)}"`);
+            console.log(`[DEEP_SWIPE_CLEANUP_END] chat[${i}]: mes="${chat[i]?.mes?.substring(0, 30)}"`);
         }
+        console.log('[DEEP_SWIPE_CLEANUP_END] ========== END CLEANUP STATE ==========');
         
         // CRITICAL FIX: Save chat immediately to prevent auto-save from loading stale data
         console.log('[Deep-Swipe-Cleanup] Saving chat to prevent corruption from auto-save...');
