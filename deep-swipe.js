@@ -103,8 +103,9 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
         return;
     }
 
-    // Track if this specific Deep Swipe generation is active
-    let isOurGeneration = false;
+    // Track if this is a Deep Swipe generation (for cleanup on stop)
+    // Set to true at generation start so cleanup runs for ANY stop (overlay button or SillyTavern stop)
+    let isOurGeneration = true;
 
     // CRITICAL: Capture ALL original data BEFORE any truncation or modifications
     // For assistant swipes, truncation removes the target, so we MUST capture first
@@ -383,9 +384,10 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
     const abortHandler = () => {
         console.log('[Deep-Swipe-Cleanup] abortHandler called - isOurGeneration:', isOurGeneration, 'abortCleanupDone:', abortCleanupDone);
         generationAborted = true;
-        // Only run cleanup if this is our generation being stopped
+        // Run cleanup if this is a Deep Swipe generation (regardless of which stop button was clicked)
+        // isOurGeneration is set to true at generation start, so cleanup runs for ANY stop
         if (!isOurGeneration) {
-            console.log('[Deep-Swipe-Cleanup] Not our generation, skipping cleanup');
+            console.log('[Deep-Swipe-Cleanup] Not a Deep Swipe generation, skipping cleanup');
             return;
         }
         // Trigger cleanup immediately when generation stops
