@@ -371,6 +371,12 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             chatElement.innerHTML = '';
         }
         
+        // Verify chat array content before printMessages
+        console.log('[Deep-Swipe-Cleanup] Chat array before printMessages:');
+        for (let i = 0; i < chat.length; i++) {
+            console.log(`[Deep-Swipe-Cleanup]   [${i}] mes="${chat[i]?.mes?.substring(0, 20)}..." is_user=${chat[i]?.is_user}`);
+        }
+        
         // Call printMessages to re-render entire chat
         await context.printMessages();
         
