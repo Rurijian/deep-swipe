@@ -370,6 +370,20 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             });
         }
         
+        // CRITICAL: Re-render all restored messages after the target
+        console.log('[Deep-Swipe-Cleanup] === RE-RENDERING RESTORED MESSAGES ===');
+        let currentMesId = messageId + 1;
+        for (const restoredMsg of originalMessagesAfter) {
+            console.log('[Deep-Swipe-Cleanup] Re-rendering restored message at mesid:', currentMesId);
+            context.addOneMessage(restoredMsg, {
+                type: 'swipe',
+                forceId: currentMesId,
+                scroll: false,
+                showSwipes: true
+            });
+            currentMesId++;
+        }
+        
         // CRITICAL: After re-render, remove any orphaned DOM elements
         // These are elements whose mesid >= chat.length (no longer valid)
         console.log('[Deep-Swipe-Cleanup] === CLEANING UP ORPHANED ELEMENTS ===');
