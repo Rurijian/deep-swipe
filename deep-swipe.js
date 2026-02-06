@@ -388,6 +388,12 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             console.log('[Deep-Swipe-Cleanup]   mesid:', mesid, '- text:', text, '- html:', html);
         });
         
+        // CRITICAL: Log final state before function returns
+        console.log('[Deep-Swipe-Cleanup] FINAL CHAT STATE before return:');
+        for (let i = 0; i < chat.length; i++) {
+            console.log(`[Deep-Swipe-Cleanup]   chat[${i}]: mes="${chat[i]?.mes?.substring(0, 30)}"`);
+        }
+        
         console.log('[Deep-Swipe-Cleanup] === ABORT CLEANUP COMPLETE ===');
         toastr.warning('Deep Swipe generation was stopped.', 'Deep Swipe');
     };
