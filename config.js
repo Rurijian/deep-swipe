@@ -10,6 +10,8 @@
 
 import { extension_settings } from '../../../extensions.js';
 
+console.log('[Deep Swipe Config] Module loading - dynamic import fix active');
+
 /**
  * Extension name identifier
  * @constant {string}
@@ -127,6 +129,8 @@ export async function updateSetting(key, value) {
     }
     extension_settings[EXTENSION_NAME][key] = value;
     // Dynamic import to avoid loading script.js at module initialization
+    console.log('[Deep Swipe Config] Dynamically importing script.js...');
     const { saveSettingsDebounced } = await import('../../../../script.js');
+    console.log('[Deep Swipe Config] script.js imported, calling saveSettingsDebounced');
     saveSettingsDebounced();
 }
