@@ -348,17 +348,6 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
         removeSwipeOverlay(messageId);
         console.log('[Deep-Swipe-Cleanup] Overlay removed');
         
-        // Re-render the target message to restore its UI state
-        if (targetMessage) {
-            console.log('[Deep-Swipe-Cleanup] Re-rendering target message at forceId:', messageId);
-            context.addOneMessage(targetMessage, {
-                type: 'swipe',
-                forceId: messageId,
-                scroll: false,
-                showSwipes: true
-            });
-        }
-        
         // CRITICAL: Find and remove the dangling DOM element BEFORE re-rendering
         // The dangling element is the assistant message that was being streamed
         // It appears after the target message and is NOT marked as stale
@@ -399,6 +388,17 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             danglingEl.remove();
         } else {
             console.log('[Deep-Swipe-Cleanup] No dangling element found to remove');
+        }
+        
+        // Re-render the target message to restore its UI state
+        if (targetMessage) {
+            console.log('[Deep-Swipe-Cleanup] Re-rendering target message at forceId:', messageId);
+            context.addOneMessage(targetMessage, {
+                type: 'swipe',
+                forceId: messageId,
+                scroll: false,
+                showSwipes: true
+            });
         }
         
         // Debug: Check all mes elements after cleanup
