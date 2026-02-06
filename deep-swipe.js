@@ -330,47 +330,31 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
         }
         console.log('[Deep-Swipe-Cleanup] After temp/dangling removal - chat.length:', chat.length);
         
-        // CRITICAL FIX: Use module-level backup if available, otherwise use captured copies
+        // CRITICAL FIX: Use module-level backup for COMPLETE chat restoration
         // The backup was saved before any generation started, so it's guaranteed clean
         console.log('[Deep-Swipe-Cleanup] About to restore chat - current length:', chat.length);
         
-        let messagesToRestore;
-        if (chatBackupBeforeGeneration && chatBackupBeforeGeneration.length > messageId + 1) {
-            console.log('[Deep-Swipe-Cleanup] Using module-level backup for restoration');
-            // Use the backup - it has the complete clean state
-            messagesToRestore = chatBackupBeforeGeneration.slice(messageId + 1);
+        if (chatBackupBeforeGeneration && chatBackupBeforeGeneration.length >= chat.length) {
+            console.log('[Deep-Swipe-Cleanup] Using module-level backup for COMPLETE restoration');
+            // COMPLETELY replace the chat array with the backup
+            chat.length = 0; // Clear current chat
+            chat.push(...JSON.parse(JSON.stringify(chatBackupBeforeGeneration))); // Push clean backup
+            console.log('[Deep-Swipe-Cleanup] Complete chat restored from backup, length:', chat.length);
         } else {
-            console.log('[Deep-Swipe-Cleanup] Using capturedMessagesAfter (backup not available)');
-            messagesToRestore = capturedMessagesAfter;
-        }
-        console.log('[Deep-Swipe-Cleanup] Messages to restore:', messagesToRestore.length);
-        
-        // DEBUG: Check captured data before restoration
-        console.log('[Deep-Swipe-Cleanup] capturedMessagesAfter BEFORE restore:');
-        capturedMessagesAfter.forEach((msg, i) => {
-            console.log(`[Deep-Swipe-Cleanup]   capturedMessagesAfter[${i}].mes: "${msg?.mes?.substring(0, 30)}"`);
-        });
-        
-        const restoredMessages = messagesToRestore.map(msg => JSON.parse(JSON.stringify(msg)));
-        
-        // DEBUG: Check restored data
-        console.log('[Deep-Swipe-Cleanup] restoredMessages AFTER clone:');
-        restoredMessages.forEach((msg, i) => {
-            console.log(`[Deep-Swipe-Cleanup]   restoredMessages[${i}].mes: "${msg?.mes?.substring(0, 30)}"`);
-        });
-        
-        if (isUserMessage) {
-            // User swipes: chat is truncated to just after target, push restored messages
-            chat.push(...restoredMessages);
-        } else {
-            // Assistant swipes: chat is truncated to before target, push captured target + messages after
-            const restoredTarget = JSON.parse(JSON.stringify(capturedTargetMessage));
-            // Remove the placeholder swipe we added for generation
-            restoredTarget.swipes.pop();
-            restoredTarget.swipe_id = Math.max(0, restoredTarget.swipes.length - 1);
-            restoredTarget.mes = restoredTarget.swipes[restoredTarget.swipe_id];
-            chat.push(restoredTarget);
-            chat.push(...restoredMessages);
+            console.log('[Deep-Swipe-Cleanup] Backup not available or invalid, using fallback restoration');
+            // Fallback to piece-by-piece restoration
+            const restoredMessages = capturedMessagesAfter.map(msg => JSON.parse(JSON.stringify(msg)));
+            
+            if (isUserMessage) {
+                chat.push(...restoredMessages);
+            } else {
+                const restoredTarget = JSON.parse(JSON.stringify(capturedTargetMessage));
+                restoredTarget.swipes.pop();
+                restoredTarget.swipe_id = Math.max(0, restoredTarget.swipes.length - 1);
+                restoredTarget.mes = restoredTarget.swipes[restoredTarget.swipe_id];
+                chat.push(restoredTarget);
+                chat.push(...restoredMessages);
+            }
         }
         console.log('[Deep-Swipe-Cleanup] After chat restore - chat.length:', chat.length);
         console.log('[Deep-Swipe-Cleanup] Restored messages content:');
