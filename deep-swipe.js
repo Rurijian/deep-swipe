@@ -348,18 +348,14 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
         removeSwipeOverlay(messageId);
         console.log('[Deep-Swipe-Cleanup] Overlay removed');
         
-        // CRITICAL: Find and remove the dangling DOM element BEFORE re-rendering
-        // The dangling element is the assistant message that was being streamed
-        // It appears after the target message and is NOT marked as stale
-        console.log('[Deep-Swipe-Cleanup] === FINDING DANGLING DOM ELEMENT ===');
+        // CRITICAL: Remove ALL non-stale DOM elements after the target message
+        // These are the dangling/partially-generated elements that need to be cleaned up
+        console.log('[Deep-Swipe-Cleanup] === REMOVING ALL DANGLING DOM ELEMENTS ===');
         
-        // Find all non-stale mes elements with mesid > messageId
-        // The dangling one is the assistant message that was being generated
-        let danglingEl = null;
-        const allMesElements = document.querySelectorAll('.mes[mesid]');
-        console.log('[Deep-Swipe-Cleanup] Scanning', allMesElements.length, 'mes elements for dangling one');
+        const allMesBeforeRender = document.querySelectorAll('.mes[mesid]');
+        console.log('[Deep-Swipe-Cleanup] Before re-render - total mes elements:', allMesBeforeRender.length);
         
-        for (const el of allMesElements) {
+        for (const el of allMesBeforeRender) {
             const mesidStr = el.getAttribute('mesid');
             // Skip stale elements and empty mesids
             if (!mesidStr || mesidStr.startsWith('stale-') || mesidStr === '') continue;
@@ -367,27 +363,11 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             const mesid = parseInt(mesidStr, 10);
             if (isNaN(mesid)) continue;
             
-            // Check if this is after the target message
+            // Remove all elements after the target message - they are dangling
             if (mesid > messageId) {
-                const isUser = el.classList.contains('mes_user');
-                const textPreview = el.querySelector('.mes_text')?.textContent?.substring(0, 30);
-                console.log('[Deep-Swipe-Cleanup] Found element after target: mesid=', mesid, 'is_user=', isUser, 'text=', textPreview);
-                
-                // The dangling element is an assistant message (not user, not system)
-                if (!isUser && !danglingEl) {
-                    danglingEl = el;
-                    console.log('[Deep-Swipe-Cleanup] >>> SELECTED as dangling element <<<');
-                }
+                console.log('[Deep-Swipe-Cleanup] Removing dangling element at mesid:', mesid);
+                el.remove();
             }
-        }
-        
-        if (danglingEl) {
-            const mesid = danglingEl.getAttribute('mesid');
-            console.log('[Deep-Swipe-Cleanup] >>> REMOVING DANGLING DOM ELEMENT at mesid', mesid, '<<<');
-            console.log('[Deep-Swipe-Cleanup] Element content:', danglingEl.querySelector('.mes_text')?.textContent?.substring(0, 50));
-            danglingEl.remove();
-        } else {
-            console.log('[Deep-Swipe-Cleanup] No dangling element found to remove');
         }
         
         // Re-render the target message to restore its UI state
@@ -399,6 +379,26 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
                 scroll: false,
                 showSwipes: true
             });
+        }
+        
+        // CRITICAL: After re-render, remove any orphaned DOM elements
+        // These are elements whose mesid >= chat.length (no longer valid)
+        console.log('[Deep-Swipe-Cleanup] === CLEANING UP ORPHANED ELEMENTS ===');
+        const allMesAfterRender = document.querySelectorAll('.mes[mesid]');
+        console.log('[Deep-Swipe-Cleanup] After re-render - total mes elements:', allMesAfterRender.length, 'chat.length:', chat.length);
+        
+        for (const el of allMesAfterRender) {
+            const mesidStr = el.getAttribute('mesid');
+            if (!mesidStr || mesidStr === '') continue;
+            
+            const mesid = parseInt(mesidStr, 10);
+            if (isNaN(mesid)) continue;
+            
+            // Remove elements that are beyond the valid chat range
+            if (mesid >= chat.length) {
+                console.log('[Deep-Swipe-Cleanup] Removing orphaned element at mesid:', mesid, '(chat.length is', chat.length + ')');
+                el.remove();
+            }
         }
         
         // Debug: Check all mes elements after cleanup
