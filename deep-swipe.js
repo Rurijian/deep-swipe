@@ -301,19 +301,20 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
         stopGeneration();
         
         // SIMPLE APPROACH: Just restore the entire chat from backup
+        console.log('[Deep-Swipe-Cleanup] Checking module backup...');
+        console.log('[Deep-Swipe-Cleanup] chatBackupBeforeGeneration exists:', !!chatBackupBeforeGeneration);
+        console.log('[Deep-Swipe-Cleanup] chatBackupBeforeGeneration.length:', chatBackupBeforeGeneration?.length);
+        
         if (chatBackupBeforeGeneration) {
-            console.log('[Deep-Swipe-Cleanup] Restoring entire chat from backup...');
-            console.log('[Deep-Swipe-Cleanup] Backup contents:');
-            chatBackupBeforeGeneration.forEach((msg, i) => {
-                console.log(`[Deep-Swipe-Cleanup]   backup[${i}]: mes="${msg?.mes?.substring(0, 30)}"`);
-            });
+            // Create a fresh copy to ensure no reference issues
+            const backupCopy = JSON.parse(JSON.stringify(chatBackupBeforeGeneration));
+            console.log('[Deep-Swipe-Cleanup] Backup copy created, length:', backupCopy.length);
+            console.log('[Deep-Swipe-Cleanup] Backup copy[2]:', backupCopy[2]?.mes?.substring(0, 30));
+            
             chat.length = 0;
-            chat.push(...JSON.parse(JSON.stringify(chatBackupBeforeGeneration)));
+            chat.push(...backupCopy);
             console.log('[Deep-Swipe-Cleanup] Chat restored, length:', chat.length);
-            console.log('[Deep-Swipe-Cleanup] Restored chat contents:');
-            chat.forEach((msg, i) => {
-                console.log(`[Deep-Swipe-Cleanup]   chat[${i}]: mes="${msg?.mes?.substring(0, 30)}"`);
-            });
+            console.log('[Deep-Swipe-Cleanup] Restored chat[2]:', chat[2]?.mes?.substring(0, 30));
         } else {
             console.error('[Deep-Swipe-Cleanup] No backup available!');
         }
