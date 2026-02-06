@@ -700,6 +700,9 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
                 throw new Error(`Target message not found at index ${messageId}`);
             }
             
+            // DEBUG: Log chat[messageId+1] before swipe storage
+            console.log('[Deep Swipe] BEFORE swipe storage - chat[messageId+1]:', chat[messageId + 1]?.mes?.substring(0, 30));
+            
             // DEBUG: Log message identity to catch reference issues
             console.log('[Deep Swipe] Storing swipe:', {
                 isUserMessage,
@@ -733,6 +736,9 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
 
             // Store the new swipe content
             actualTargetMessage.swipes[newSwipeIndex] = trimmedText;
+            
+            // DEBUG: Log chat[messageId+1] after swipe storage
+            console.log('[Deep Swipe] AFTER swipe storage - chat[messageId+1]:', chat[messageId + 1]?.mes?.substring(0, 30));
 
             // Keep the original swipe content in message.mes (Deep Swipe always keeps visible)
             // The new swipe is stored in message.swipes[newSwipeIndex]
