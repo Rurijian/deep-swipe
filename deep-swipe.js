@@ -630,17 +630,17 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
 
         // CRITICAL: Restore the chat array after truncation
         // We truncated the chat during generation, now restore the original messages
+        // CRITICAL FIX: Use captured copies, never the original references
         if (isUserMessage) {
             // User swipes: insert messages after target (target was kept at messageId)
-            // Restore from captured copies
             const restoredMessages = capturedMessagesAfter.map(msg => JSON.parse(JSON.stringify(msg)));
             chat.splice(messageId + 1, 0, ...restoredMessages);
         } else {
             // Assistant swipes: re-insert target and messages after it
-            if (originalTargetMessage) {
-                chat.splice(messageId, 0, originalTargetMessage);
-            }
-            // Restore from captured copies
+            // Use captured copy, not originalTargetMessage reference
+            const restoredTarget = JSON.parse(JSON.stringify(capturedTargetMessage));
+            chat.splice(messageId, 0, restoredTarget);
+            
             const restoredMessages = capturedMessagesAfter.map(msg => JSON.parse(JSON.stringify(msg)));
             chat.splice(messageId + 1, 0, ...restoredMessages);
         }
