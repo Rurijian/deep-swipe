@@ -305,8 +305,7 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
     
     // Shared cleanup function for when generation is stopped
     const performAbortCleanup = async () => {
-        console.log('[Deep-Swipe-Cleanup] === STARTING ABORT CLEANUP ===');
-        console.log('[Deep-Swipe-Cleanup] Initial state - messageId:', messageId, 'isUserMessage:', isUserMessage, 'chat.length:', chat.length);
+        console.log('[Deep-Swipe-Cleanup] === STOP CLICKED - RESTORING ENTIRE CHAT ===');
         
         if (abortCleanupDone) {
             console.log('[Deep-Swipe-Cleanup] Cleanup already done, returning');
@@ -317,70 +316,19 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
         // Remove event listeners
         eventSource.removeListener(event_types.STREAM_REASONING_DONE, reasoningEventHandler);
         eventSource.removeListener(event_types.GENERATION_STOPPED, abortHandler);
-        console.log('[Deep-Swipe-Cleanup] Event listeners removed');
         
-        // CRITICAL: First, find and remove temp message and any dangling messages after it
-        let tempMessageIndex = -1;
-        for (let i = chat.length - 1; i >= 0; i--) {
-            if (chat[i]?.extra?.isDeepSwipeTemp) {
-                tempMessageIndex = i;
-                break;
-            }
-        }
-        console.log('[Deep-Swipe-Cleanup] Temp message index found:', tempMessageIndex);
+        // Stop server generation
+        stopGeneration();
         
-        // Truncate chat to remove temp and dangling messages
-        // If temp found, truncate to temp index. Otherwise, truncate based on message type
-        if (tempMessageIndex !== -1) {
-            console.log('[Deep-Swipe-Cleanup] Truncating chat to temp message index:', tempMessageIndex);
-            chat.length = tempMessageIndex;
+        // SIMPLE APPROACH: Just restore the entire chat from backup
+        if (chatBackupBeforeGeneration) {
+            console.log('[Deep-Swipe-Cleanup] Restoring entire chat from backup...');
+            chat.length = 0;
+            chat.push(...JSON.parse(JSON.stringify(chatBackupBeforeGeneration)));
+            console.log('[Deep-Swipe-Cleanup] Chat restored, length:', chat.length);
         } else {
-            // No temp message found - truncate to proper position based on message type
-            if (isUserMessage) {
-                // User swipes: truncate to after target (messageId + 1)
-                console.log('[Deep-Swipe-Cleanup] No temp found, truncating to messageId + 1:', messageId + 1);
-                chat.length = messageId + 1;
-            } else {
-                // Assistant swipes: truncate to before target (messageId)
-                console.log('[Deep-Swipe-Cleanup] No temp found, truncating to messageId:', messageId);
-                chat.length = messageId;
-            }
+            console.error('[Deep-Swipe-Cleanup] No backup available!');
         }
-        console.log('[Deep-Swipe-Cleanup] After temp/dangling removal - chat.length:', chat.length);
-        
-        // CRITICAL FIX: Use module-level backup for COMPLETE chat restoration
-        // The backup was saved before any generation started, so it's guaranteed clean
-        console.log('[Deep-Swipe-Cleanup] About to restore chat - current length:', chat.length);
-        
-        if (chatBackupBeforeGeneration && chatBackupBeforeGeneration.length >= chat.length) {
-            console.log('[Deep-Swipe-Cleanup] Using module-level backup for COMPLETE restoration');
-            // COMPLETELY replace the chat array with the backup
-            chat.length = 0; // Clear current chat
-            chat.push(...JSON.parse(JSON.stringify(chatBackupBeforeGeneration))); // Push clean backup
-            console.log('[Deep-Swipe-Cleanup] Complete chat restored from backup, length:', chat.length);
-        } else {
-            console.log('[Deep-Swipe-Cleanup] Backup not available or invalid, using fallback restoration');
-            // Fallback to piece-by-piece restoration
-            const restoredMessages = capturedMessagesAfter.map(msg => JSON.parse(JSON.stringify(msg)));
-            
-            if (isUserMessage) {
-                chat.push(...restoredMessages);
-            } else {
-                const restoredTarget = JSON.parse(JSON.stringify(capturedTargetMessage));
-                restoredTarget.swipes.pop();
-                restoredTarget.swipe_id = Math.max(0, restoredTarget.swipes.length - 1);
-                restoredTarget.mes = restoredTarget.swipes[restoredTarget.swipe_id];
-                chat.push(restoredTarget);
-                chat.push(...restoredMessages);
-            }
-        }
-        console.log('[Deep-Swipe-Cleanup] After chat restore - chat.length:', chat.length);
-        console.log('[Deep-Swipe-Cleanup] Restored messages content:');
-        for (let i = 0; i < chat.length; i++) {
-            console.log(`[Deep-Swipe-Cleanup]   chat[${i}]: mes="${chat[i]?.mes?.substring(0, 30)}" is_user=${chat[i]?.is_user} name="${chat[i]?.name}" extra=${JSON.stringify(chat[i]?.extra)?.substring(0, 50)}`);
-        }
-        
-        // CRITICAL: Remove only stale/dangling DOM elements
         // Don't remove valid messages - let addOneMessage handle re-rendering
         const staleElements = document.querySelectorAll('.mes[mesid^="stale-"]');
         console.log('[Deep-Swipe-Cleanup] Removing', staleElements.length, 'stale DOM elements');
