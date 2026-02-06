@@ -272,11 +272,22 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
         }
         console.log('[Deep-Swipe-Cleanup] Temp message index found:', tempMessageIndex);
         
-        // If temp message exists, remove it and any messages after it (they're all dangling/partial)
+        // Truncate chat to remove temp and dangling messages
+        // If temp found, truncate to temp index. Otherwise, truncate based on message type
         if (tempMessageIndex !== -1) {
-            console.log('[Deep-Swipe-Cleanup] Truncating chat to remove temp and dangling messages at/after index:', tempMessageIndex);
-            // Truncate to remove temp message and everything after it
+            console.log('[Deep-Swipe-Cleanup] Truncating chat to temp message index:', tempMessageIndex);
             chat.length = tempMessageIndex;
+        } else {
+            // No temp message found - truncate to proper position based on message type
+            if (isUserMessage) {
+                // User swipes: truncate to after target (messageId + 1)
+                console.log('[Deep-Swipe-Cleanup] No temp found, truncating to messageId + 1:', messageId + 1);
+                chat.length = messageId + 1;
+            } else {
+                // Assistant swipes: truncate to before target (messageId)
+                console.log('[Deep-Swipe-Cleanup] No temp found, truncating to messageId:', messageId);
+                chat.length = messageId;
+            }
         }
         console.log('[Deep-Swipe-Cleanup] After temp/dangling removal - chat.length:', chat.length);
         
@@ -341,6 +352,13 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
         // This is the most reliable way to ensure DOM matches chat array
         console.log('[Deep-Swipe-Cleanup] === FULL CHAT RE-RENDER ===');
         console.log('[Deep-Swipe-Cleanup] About to call printMessages with chat.length:', chat.length);
+        
+        // Clear the chat element first to prevent duplicates
+        const chatElement = document.getElementById('chat');
+        if (chatElement) {
+            console.log('[Deep-Swipe-Cleanup] Clearing chat element');
+            chatElement.innerHTML = '';
+        }
         
         // Call printMessages to re-render entire chat
         await context.printMessages();
