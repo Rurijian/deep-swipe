@@ -497,9 +497,12 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             console.log('[Deep-Swipe-Cleanup-DIAG] Original chat[2]:', chat[2]?.mes?.substring(0, 30));
             console.log('[Deep-Swipe-Cleanup-DIAG] Copy chat[2]:', chatCopyBeforeSave[2]?.mes?.substring(0, 30));
             
-            // CRITICAL FIX: If save corrupted the chat, restore from our copy
-            if (chat[2]?.mes === '' && chatCopyBeforeSave[2]?.mes !== '') {
-                console.error('[Deep-Swipe-Cleanup-DIAG] SAVE CORRUPTED CHAT! Restoring from copy...');
+            // CRITICAL FIX: If save corrupted the chat (ANY change to content), restore from our copy
+            // The save may overwrite content with data from other messages, not just empty it
+            if (chat[2]?.mes !== chatCopyBeforeSave[2]?.mes) {
+                console.error('[Deep-Swipe-Cleanup-DIAG] SAVE CORRUPTED CHAT! Content changed from "' +
+                    chatCopyBeforeSave[2]?.mes?.substring(0, 30) + '" to "' + chat[2]?.mes?.substring(0, 30) + '"');
+                console.error('[Deep-Swipe-Cleanup-DIAG] Restoring from copy...');
                 chat.splice(0, chat.length, ...chatCopyBeforeSave);
                 console.log('[Deep-Swipe-Cleanup-DIAG] Chat restored from copy, chat[2]:', chat[2]?.mes?.substring(0, 30));
             }
@@ -524,9 +527,11 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             await saveChatConditional();
             console.log('[Deep-Swipe-Cleanup] Second save completed to overwrite any late auto-saves');
             
-            // CRITICAL FIX: Check and restore if second save corrupted chat
-            if (chat[2]?.mes === '' && chatCopyBeforeSecondSave[2]?.mes !== '') {
-                console.error('[Deep-Swipe-Cleanup-DIAG] SECOND SAVE CORRUPTED CHAT! Restoring from copy...');
+            // CRITICAL FIX: Check and restore if second save corrupted chat (ANY content change)
+            if (chat[2]?.mes !== chatCopyBeforeSecondSave[2]?.mes) {
+                console.error('[Deep-Swipe-Cleanup-DIAG] SECOND SAVE CORRUPTED CHAT! Content changed from "' +
+                    chatCopyBeforeSecondSave[2]?.mes?.substring(0, 30) + '" to "' + chat[2]?.mes?.substring(0, 30) + '"');
+                console.error('[Deep-Swipe-Cleanup-DIAG] Restoring from second copy...');
                 chat.splice(0, chat.length, ...chatCopyBeforeSecondSave);
                 console.log('[Deep-Swipe-Cleanup-DIAG] Chat restored from second copy, chat[2]:', chat[2]?.mes?.substring(0, 30));
             }
@@ -576,9 +581,11 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             await context.saveChat();
             console.log('[Deep-Swipe-Cleanup] Chat saved successfully');
             
-            // CRITICAL FIX: Check and restore if final save corrupted chat
-            if (chat[2]?.mes === '' && chatCopyBeforeFinalSave[2]?.mes !== '') {
-                console.error('[Deep-Swipe-Cleanup-DIAG] FINAL SAVE CORRUPTED CHAT! Restoring from copy...');
+            // CRITICAL FIX: Check and restore if final save corrupted chat (ANY content change)
+            if (chat[2]?.mes !== chatCopyBeforeFinalSave[2]?.mes) {
+                console.error('[Deep-Swipe-Cleanup-DIAG] FINAL SAVE CORRUPTED CHAT! Content changed from "' +
+                    chatCopyBeforeFinalSave[2]?.mes?.substring(0, 30) + '" to "' + chat[2]?.mes?.substring(0, 30) + '"');
+                console.error('[Deep-Swipe-Cleanup-DIAG] Restoring from final copy...');
                 chat.splice(0, chat.length, ...chatCopyBeforeFinalSave);
                 console.log('[Deep-Swipe-Cleanup-DIAG] Chat restored from final copy, chat[2]:', chat[2]?.mes?.substring(0, 30));
             }
