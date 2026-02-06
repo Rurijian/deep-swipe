@@ -119,13 +119,27 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
     }
     console.log('[DEEP_SWIPE_START] ========== END START STATE ==========');
     
+    // CRITICAL FIX: Reload chat from server to ensure clean state
+    // This prevents using corrupted data from previous runs
+    console.log('[DEEP_SWIPE_START] Reloading chat from server to ensure clean state...');
+    try {
+        await context.reloadCurrentChat();
+        console.log('[DEEP_SWIPE_START] Chat reloaded successfully');
+    } catch (reloadError) {
+        console.error('[DEEP_SWIPE_START] Failed to reload chat:', reloadError);
+    }
+    
+    // Log state after reload
+    console.log('[DEEP_SWIPE_START] Chat state after reload:');
+    for (let i = 0; i < chat.length; i++) {
+        console.log(`[DEEP_SWIPE_START] chat[${i}]: mes="${chat[i]?.mes?.substring(0, 30)}"`);
+    }
+    
     // CRITICAL FIX: Save complete chat backup before any modifications
     // This ensures we have a clean state to restore from if stop occurs
     chatBackupBeforeGeneration = JSON.parse(JSON.stringify(chat));
     chatBackupTimestamp = Date.now();
     console.log('[DEEP_SWIPE_START] Complete chat backup saved, length:', chatBackupBeforeGeneration.length);
-    
-    // CRITICAL FIX: Check if chat was corrupted between runs
     // If messageId+1 exists but has empty content, SillyTavern corrupted it
     if (chat[messageId + 1] && chat[messageId + 1].mes === '' && chat[messageId + 1].is_user) {
         console.error('[DEEP_SWIPE_START] CORRUPTION DETECTED! chat[messageId+1] is empty but should have content');
