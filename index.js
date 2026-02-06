@@ -4,7 +4,7 @@
  * Allows swiping (regenerating) any message in chat history, not just the last one.
  *
  * @author Rurijian
- * @version 1.2.0
+ * @version 1.5.0
  * @license MIT
  */
 
@@ -17,6 +17,7 @@ import {
     EXTENSION_NAME,
     extensionFolderPath,
     DEFAULT_IMPERSONATION_PROMPT,
+    DEFAULT_ASSISTANT_PROMPT,
     defaultSettings,
     loadSettings,
     setButtonsInitialized,
@@ -203,6 +204,15 @@ function onImpersonationPromptChange(event) {
 }
 
 /**
+ * Handle assistant prompt change
+ * @param {Event} event - The input event
+ */
+function onAssistantPromptChange(event) {
+    const value = event.target.value;
+    updateSetting('assistantPrompt', value);
+}
+
+/**
  * Handle assistant swipes toggle change
  * @param {Event} event - The change event
  */
@@ -245,6 +255,18 @@ function onResetPromptClick() {
 }
 
 /**
+ * Handle reset assistant prompt button click
+ */
+function onResetAssistantPromptClick() {
+    const textarea = document.getElementById('deep_swipe_assistant_prompt');
+    if (textarea) {
+        textarea.value = DEFAULT_ASSISTANT_PROMPT;
+        updateSetting('assistantPrompt', DEFAULT_ASSISTANT_PROMPT);
+        toastr.info('Assistant prompt reset to default', 'Deep Swipe');
+    }
+}
+
+/**
  * Handle auto-advance toggle change
  * @param {Event} event - The change event
  */
@@ -277,6 +299,8 @@ jQuery(async () => {
         document.getElementById('deep_swipe_auto_advance')?.addEventListener('change', onAutoAdvanceChange);
         document.getElementById('deep_swipe_impersonation_prompt')?.addEventListener('input', onImpersonationPromptChange);
         document.getElementById('deep_swipe_reset_prompt')?.addEventListener('click', onResetPromptClick);
+        document.getElementById('deep_swipe_assistant_prompt')?.addEventListener('input', onAssistantPromptChange);
+        document.getElementById('deep_swipe_reset_assistant_prompt')?.addEventListener('click', onResetAssistantPromptClick);
 
         loadSettings();
         await registerSlashCommands(dswipeBack, dswipeForward);

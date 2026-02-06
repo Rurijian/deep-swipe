@@ -4,7 +4,7 @@
  * DOM manipulation and swipe navigation UI components.
  *
  * @author Rurijian
- * @version 1.2.0
+ * @version 1.5.0
  * @license MIT
  */
 
