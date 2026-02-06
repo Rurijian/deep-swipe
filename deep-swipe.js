@@ -337,72 +337,15 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
         removeSwipeOverlay(messageId);
         console.log('[Deep-Swipe-Cleanup] Overlay removed');
         
-        // CRITICAL: Remove ALL non-stale DOM elements after the target message
-        // These are the dangling/partially-generated elements that need to be cleaned up
-        console.log('[Deep-Swipe-Cleanup] === REMOVING ALL DANGLING DOM ELEMENTS ===');
+        // CRITICAL: Use printMessages to fully re-render the chat after cleanup
+        // This is the most reliable way to ensure DOM matches chat array
+        console.log('[Deep-Swipe-Cleanup] === FULL CHAT RE-RENDER ===');
+        console.log('[Deep-Swipe-Cleanup] About to call printMessages with chat.length:', chat.length);
         
-        const allMesBeforeRender = document.querySelectorAll('.mes[mesid]');
-        console.log('[Deep-Swipe-Cleanup] Before re-render - total mes elements:', allMesBeforeRender.length);
+        // Call printMessages to re-render entire chat
+        await context.printMessages();
         
-        for (const el of allMesBeforeRender) {
-            const mesidStr = el.getAttribute('mesid');
-            // Skip stale elements and empty mesids
-            if (!mesidStr || mesidStr.startsWith('stale-') || mesidStr === '') continue;
-            
-            const mesid = parseInt(mesidStr, 10);
-            if (isNaN(mesid)) continue;
-            
-            // Remove all elements after the target message - they are dangling
-            if (mesid > messageId) {
-                console.log('[Deep-Swipe-Cleanup] Removing dangling element at mesid:', mesid);
-                el.remove();
-            }
-        }
-        
-        // Re-render the target message to restore its UI state
-        if (targetMessage) {
-            console.log('[Deep-Swipe-Cleanup] Re-rendering target message at forceId:', messageId);
-            context.addOneMessage(targetMessage, {
-                type: 'swipe',
-                forceId: messageId,
-                scroll: false,
-                showSwipes: true
-            });
-        }
-        
-        // CRITICAL: Re-render all restored messages after the target
-        console.log('[Deep-Swipe-Cleanup] === RE-RENDERING RESTORED MESSAGES ===');
-        let currentMesId = messageId + 1;
-        for (const restoredMsg of originalMessagesAfter) {
-            console.log('[Deep-Swipe-Cleanup] Re-rendering restored message at mesid:', currentMesId);
-            context.addOneMessage(restoredMsg, {
-                type: 'swipe',
-                forceId: currentMesId,
-                scroll: false,
-                showSwipes: true
-            });
-            currentMesId++;
-        }
-        
-        // CRITICAL: After re-render, remove any orphaned DOM elements
-        // These are elements whose mesid >= chat.length (no longer valid)
-        console.log('[Deep-Swipe-Cleanup] === CLEANING UP ORPHANED ELEMENTS ===');
-        const allMesAfterRender = document.querySelectorAll('.mes[mesid]');
-        console.log('[Deep-Swipe-Cleanup] After re-render - total mes elements:', allMesAfterRender.length, 'chat.length:', chat.length);
-        
-        for (const el of allMesAfterRender) {
-            const mesidStr = el.getAttribute('mesid');
-            if (!mesidStr || mesidStr === '') continue;
-            
-            const mesid = parseInt(mesidStr, 10);
-            if (isNaN(mesid)) continue;
-            
-            // Remove elements that are beyond the valid chat range
-            if (mesid >= chat.length) {
-                console.log('[Deep-Swipe-Cleanup] Removing orphaned element at mesid:', mesid, '(chat.length is', chat.length + ')');
-                el.remove();
-            }
-        }
+        console.log('[Deep-Swipe-Cleanup] printMessages complete');
         
         // Debug: Check all mes elements after cleanup
         const allMesAfter = document.querySelectorAll('.mes[mesid]');
