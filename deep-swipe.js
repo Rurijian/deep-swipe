@@ -381,6 +381,15 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
         
         console.log('[Deep-Swipe-Cleanup] printMessages complete');
         
+        // CRITICAL: Save chat to prevent auto-save from loading stale data
+        console.log('[Deep-Swipe-Cleanup] Saving restored chat...');
+        try {
+            await context.saveChat();
+            console.log('[Deep-Swipe-Cleanup] Chat saved');
+        } catch (e) {
+            console.error('[Deep-Swipe-Cleanup] Error saving chat:', e);
+        }
+        
         // Debug: Check all mes elements after cleanup
         const allMesAfter = document.querySelectorAll('.mes[mesid]');
         console.log('[Deep-Swipe-Cleanup] All .mes elements after cleanup:', allMesAfter.length);
