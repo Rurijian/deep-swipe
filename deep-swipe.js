@@ -251,12 +251,19 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
     
     // Shared cleanup function for when generation is stopped
     const performAbortCleanup = async () => {
-        if (abortCleanupDone) return;
+        console.log('[Deep-Swipe-Cleanup] === STARTING ABORT CLEANUP ===');
+        console.log('[Deep-Swipe-Cleanup] Initial state - messageId:', messageId, 'isUserMessage:', isUserMessage, 'expectedDanglingMesId:', expectedDanglingMesId, 'chat.length:', chat.length);
+        
+        if (abortCleanupDone) {
+            console.log('[Deep-Swipe-Cleanup] Cleanup already done, returning');
+            return;
+        }
         abortCleanupDone = true;
         
         // Remove event listeners
         eventSource.removeListener(event_types.STREAM_REASONING_DONE, reasoningEventHandler);
         eventSource.removeListener(event_types.GENERATION_STOPPED, abortHandler);
+        console.log('[Deep-Swipe-Cleanup] Event listeners removed');
         
         // CRITICAL: First, find and remove the dangling assistant message if it exists
         // This is the partially-generated message that was being streamed
@@ -267,22 +274,28 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
                 break;
             }
         }
+        console.log('[Deep-Swipe-Cleanup] Temp message index found:', tempMessageIndex);
         
         // If temp message exists and there's an assistant message after it, that's the dangling one
         if (tempMessageIndex !== -1 && tempMessageIndex < chat.length - 1) {
+            console.log('[Deep-Swipe-Cleanup] Found temp message, checking for dangling messages after it');
             // Check all messages after temp message - they are dangling/partial
             for (let i = chat.length - 1; i > tempMessageIndex; i--) {
                 const msg = chat[i];
+                console.log('[Deep-Swipe-Cleanup] Checking message at index', i, '- is_user:', msg?.is_user, 'isDeepSwipeTemp:', msg?.extra?.isDeepSwipeTemp, 'mes preview:', msg?.mes?.substring(0, 30));
                 if (msg && !msg.is_user && !msg.extra?.isDeepSwipeTemp) {
-                    console.log('[Deep Swipe] Removing dangling assistant message at index', i, ':', msg.mes?.substring(0, 50));
+                    console.log('[Deep-Swipe-Cleanup] REMOVING dangling assistant message at index', i, ':', msg.mes?.substring(0, 50));
                     chat.splice(i, 1);
                 }
             }
         }
+        console.log('[Deep-Swipe-Cleanup] After dangling removal - chat.length:', chat.length);
         
         // Revert swipe data BEFORE restoring chat (we still have the message reference)
         const targetMessage = isUserMessage ? message : originalTargetMessage;
+        console.log('[Deep-Swipe-Cleanup] Target message found:', !!targetMessage, 'isUserMessage:', isUserMessage);
         if (targetMessage) {
+            console.log('[Deep-Swipe-Cleanup] Reverting swipe data - current swipes.length:', targetMessage.swipes?.length, 'swipe_id:', targetMessage.swipe_id);
             // Remove the empty swipe we added for generation
             if (targetMessage.swipes.length > 0) {
                 targetMessage.swipes.pop();
@@ -294,25 +307,34 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             targetMessage.swipe_id = Math.max(0, targetMessage.swipes.length - 1);
             // Restore the original text
             targetMessage.mes = targetMessage.swipes[targetMessage.swipe_id] || currentText;
+            console.log('[Deep-Swipe-Cleanup] After revert - swipes.length:', targetMessage.swipes.length, 'swipe_id:', targetMessage.swipe_id);
         }
         
         // CRITICAL: Restore chat array - truncate and rebuild
+        console.log('[Deep-Swipe-Cleanup] About to restore chat - originalMessagesAfter.length:', originalMessagesAfter.length);
         if (isUserMessage) {
             // User swipes: truncate to messageId + 1 (keep target), then restore messages after
+            console.log('[Deep-Swipe-Cleanup] User swipe - truncating to messageId + 1:', messageId + 1);
             chat.length = messageId + 1;
             chat.push(...originalMessagesAfter);
         } else {
             // Assistant swipes: truncate to messageId (target was removed), restore target + messages after
+            console.log('[Deep-Swipe-Cleanup] Assistant swipe - truncating to messageId:', messageId);
             chat.length = messageId;
             if (originalTargetMessage) {
+                console.log('[Deep-Swipe-Cleanup] Pushing originalTargetMessage');
                 chat.push(originalTargetMessage);
             }
             chat.push(...originalMessagesAfter);
         }
+        console.log('[Deep-Swipe-Cleanup] After chat restore - chat.length:', chat.length);
         
         // CRITICAL: Remove only stale/dangling DOM elements
         // Don't remove valid messages - let addOneMessage handle re-rendering
-        document.querySelectorAll('.mes[mesid^="stale-"]').forEach(el => {
+        const staleElements = document.querySelectorAll('.mes[mesid^="stale-"]');
+        console.log('[Deep-Swipe-Cleanup] Removing', staleElements.length, 'stale DOM elements');
+        staleElements.forEach(el => {
+            console.log('[Deep-Swipe-Cleanup] Removing stale element:', el.getAttribute('mesid'));
             el.remove();
         });
         
@@ -327,9 +349,11 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
         // Remove overlay
         const { removeSwipeOverlay } = await import('./ui.js');
         removeSwipeOverlay(messageId);
+        console.log('[Deep-Swipe-Cleanup] Overlay removed');
         
         // Re-render the target message to restore its UI state
         if (targetMessage) {
+            console.log('[Deep-Swipe-Cleanup] Re-rendering target message at forceId:', messageId);
             context.addOneMessage(targetMessage, {
                 type: 'swipe',
                 forceId: messageId,
@@ -342,24 +366,42 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
         // This MUST be done LAST, after all re-rendering is complete
         // The dangling element is the one that was being generated - it appears after
         // the target message but its content is the partial assistant response
+        console.log('[Deep-Swipe-Cleanup] === FINAL DOM CLEANUP ===');
+        console.log('[Deep-Swipe-Cleanup] expectedDanglingMesId:', expectedDanglingMesId);
+        
         if (expectedDanglingMesId !== null) {
             const danglingEl = document.querySelector(`.mes[mesid="${expectedDanglingMesId}"]`);
+            console.log('[Deep-Swipe-Cleanup] Dangling element found:', !!danglingEl);
             if (danglingEl) {
-                console.log('[Deep Swipe] Removing dangling DOM element at mesid', expectedDanglingMesId);
+                console.log('[Deep-Swipe-Cleanup] >>> REMOVING DANGLING DOM ELEMENT at mesid', expectedDanglingMesId, '<<<');
+                console.log('[Deep-Swipe-Cleanup] Element content preview:', danglingEl.querySelector('.mes_text')?.textContent?.substring(0, 50));
                 danglingEl.remove();
             }
         }
         
+        // Debug: Check all mes elements after cleanup
+        const allMesElements = document.querySelectorAll('.mes[mesid]');
+        console.log('[Deep-Swipe-Cleanup] All .mes elements after cleanup:', allMesElements.length);
+        allMesElements.forEach(el => {
+            const mesid = el.getAttribute('mesid');
+            const text = el.querySelector('.mes_text')?.textContent?.substring(0, 30);
+            console.log('[Deep-Swipe-Cleanup]   mesid:', mesid, '- text:', text);
+        });
+        
+        console.log('[Deep-Swipe-Cleanup] === ABORT CLEANUP COMPLETE ===');
         toastr.warning('Deep Swipe generation was stopped.', 'Deep Swipe');
     };
     
     const abortHandler = () => {
+        console.log('[Deep-Swipe-Cleanup] abortHandler called - isOurGeneration:', isOurGeneration, 'abortCleanupDone:', abortCleanupDone);
         generationAborted = true;
         // Only run cleanup if this is our generation being stopped
         if (!isOurGeneration) {
+            console.log('[Deep-Swipe-Cleanup] Not our generation, skipping cleanup');
             return;
         }
         // Trigger cleanup immediately when generation stops
+        console.log('[Deep-Swipe-Cleanup] Triggering performAbortCleanup');
         performAbortCleanup();
     };
     eventSource.once(event_types.GENERATION_STOPPED, abortHandler);
@@ -398,6 +440,7 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             showThrobber: true,
             onComplete: null,
             onStop: () => {
+                console.log('[Deep-Swipe-Cleanup] === STOP BUTTON CLICKED ===');
                 // Mark that we intentionally stopped our own generation
                 isOurGeneration = true;
                 
@@ -409,9 +452,20 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
                 } else {
                     expectedDanglingMesId = messageId + 1;
                 }
-                console.log('[Deep Swipe] Expecting dangling message at mesid:', expectedDanglingMesId, '(isUserMessage:', isUserMessage + ')');
+                console.log('[Deep-Swipe-Cleanup] Calculated expectedDanglingMesId:', expectedDanglingMesId, '(isUserMessage:', isUserMessage + ', messageId:', messageId + ')');
+                console.log('[Deep-Swipe-Cleanup] Current chat.length before stop:', chat.length);
+                
+                // Debug: Log current DOM state
+                const allMesBefore = document.querySelectorAll('.mes[mesid]');
+                console.log('[Deep-Swipe-Cleanup] DOM elements before stop:', allMesBefore.length);
+                allMesBefore.forEach(el => {
+                    const mesid = el.getAttribute('mesid');
+                    const isUser = el.classList.contains('mes_user');
+                    console.log('[Deep-Swipe-Cleanup]   mesid:', mesid, 'is_user:', isUser);
+                });
                 
                 // Stop generation - this triggers GENERATION_STOPPED which calls abortHandler
+                console.log('[Deep-Swipe-Cleanup] Calling stopGeneration()...');
                 stopGeneration();
             }
         });
