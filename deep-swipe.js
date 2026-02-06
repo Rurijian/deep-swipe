@@ -356,13 +356,19 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
         if (waitingToast) {
             $(waitingToast).remove();
         }
+        console.log('[Deep-Swipe-Cleanup] After toast removal - chat[2]:', chat[2]?.mes?.substring(0, 20));
+        
         if (mesElement) {
             mesElement.classList.remove('deep-swipe-loading');
         }
+        console.log('[Deep-Swipe-Cleanup] After class removal - chat[2]:', chat[2]?.mes?.substring(0, 20));
         
         // Remove overlay
+        console.log('[Deep-Swipe-Cleanup] About to import ui.js - chat[2]:', chat[2]?.mes?.substring(0, 20));
         const { removeSwipeOverlay } = await import('./ui.js');
+        console.log('[Deep-Swipe-Cleanup] After import - chat[2]:', chat[2]?.mes?.substring(0, 20));
         removeSwipeOverlay(messageId);
+        console.log('[Deep-Swipe-Cleanup] After removeSwipeOverlay - chat[2]:', chat[2]?.mes?.substring(0, 20));
         console.log('[Deep-Swipe-Cleanup] Overlay removed');
         
         // Check chat array after overlay removal
