@@ -15,6 +15,11 @@ import { getSettings, EXTENSION_NAME, DEFAULT_ASSISTANT_PROMPT } from './config.
 import { syncReasoningFromSwipeInfo, error, isValidMessageId } from './utils.js';
 import { updateMessageSwipeUI } from './ui.js';
 
+// Module-level variable to store complete chat backup before generation
+// This ensures we have a clean state to restore from if corruption occurs
+let chatBackupBeforeGeneration = null;
+let chatBackupTimestamp = null;
+
 /**
  * Get the current API and model information for swipe storage
  * This ensures model icons display correctly when navigating swipes
@@ -113,6 +118,12 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
         console.log(`[DEEP_SWIPE_START] chat[${i}]: mes="${chat[i]?.mes?.substring(0, 30)}" is_user=${chat[i]?.is_user}`);
     }
     console.log('[DEEP_SWIPE_START] ========== END START STATE ==========');
+    
+    // CRITICAL FIX: Save complete chat backup before any modifications
+    // This ensures we have a clean state to restore from if stop occurs
+    chatBackupBeforeGeneration = JSON.parse(JSON.stringify(chat));
+    chatBackupTimestamp = Date.now();
+    console.log('[DEEP_SWIPE_START] Complete chat backup saved, length:', chatBackupBeforeGeneration.length);
     
     // CRITICAL FIX: Check if chat was corrupted between runs
     // If messageId+1 exists but has empty content, SillyTavern corrupted it
@@ -319,9 +330,20 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
         }
         console.log('[Deep-Swipe-Cleanup] After temp/dangling removal - chat.length:', chat.length);
         
-        // CRITICAL FIX: Use captured copies, not references
-        // Create fresh copies to avoid any reference issues with SillyTavern
-        console.log('[Deep-Swipe-Cleanup] About to restore chat - current length:', chat.length, 'capturedMessagesAfter.length:', capturedMessagesAfter.length);
+        // CRITICAL FIX: Use module-level backup if available, otherwise use captured copies
+        // The backup was saved before any generation started, so it's guaranteed clean
+        console.log('[Deep-Swipe-Cleanup] About to restore chat - current length:', chat.length);
+        
+        let messagesToRestore;
+        if (chatBackupBeforeGeneration && chatBackupBeforeGeneration.length > messageId + 1) {
+            console.log('[Deep-Swipe-Cleanup] Using module-level backup for restoration');
+            // Use the backup - it has the complete clean state
+            messagesToRestore = chatBackupBeforeGeneration.slice(messageId + 1);
+        } else {
+            console.log('[Deep-Swipe-Cleanup] Using capturedMessagesAfter (backup not available)');
+            messagesToRestore = capturedMessagesAfter;
+        }
+        console.log('[Deep-Swipe-Cleanup] Messages to restore:', messagesToRestore.length);
         
         // DEBUG: Check captured data before restoration
         console.log('[Deep-Swipe-Cleanup] capturedMessagesAfter BEFORE restore:');
@@ -329,7 +351,7 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             console.log(`[Deep-Swipe-Cleanup]   capturedMessagesAfter[${i}].mes: "${msg?.mes?.substring(0, 30)}"`);
         });
         
-        const restoredMessages = capturedMessagesAfter.map(msg => JSON.parse(JSON.stringify(msg)));
+        const restoredMessages = messagesToRestore.map(msg => JSON.parse(JSON.stringify(msg)));
         
         // DEBUG: Check restored data
         console.log('[Deep-Swipe-Cleanup] restoredMessages AFTER clone:');
@@ -446,6 +468,10 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             console.log(`[DEEP_SWIPE_CLEANUP_END] chat[${i}]: mes="${chat[i]?.mes?.substring(0, 30)}"`);
         }
         console.log('[DEEP_SWIPE_CLEANUP_END] ========== END CLEANUP STATE ==========');
+        
+        // Clear the backup after successful cleanup
+        chatBackupBeforeGeneration = null;
+        chatBackupTimestamp = null;
         
         // CRITICAL FIX: Save chat immediately to prevent auto-save from loading stale data
         console.log('[Deep-Swipe-Cleanup] Saving chat to prevent corruption from auto-save...');
