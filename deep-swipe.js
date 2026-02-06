@@ -82,9 +82,6 @@ export async function handleUserSwipeBack(message, messageId, targetSwipeId, mes
  * @param {boolean} isUserMessage - Whether this is a user message (true) or assistant (false)
  */
 export async function generateMessageSwipe(message, messageId, context, isUserMessage = true) {
-    // Track expected dangling message ID for cleanup on stop
-    let expectedDanglingMesId = null;
-    
     // Check if Prompt Inspector is enabled - BLOCK generation if so
     const promptInspectorEnabled = localStorage.getItem('promptInspectorEnabled') === 'true';
     if (promptInspectorEnabled) {
@@ -252,7 +249,7 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
     // Shared cleanup function for when generation is stopped
     const performAbortCleanup = async () => {
         console.log('[Deep-Swipe-Cleanup] === STARTING ABORT CLEANUP ===');
-        console.log('[Deep-Swipe-Cleanup] Initial state - messageId:', messageId, 'isUserMessage:', isUserMessage, 'expectedDanglingMesId:', expectedDanglingMesId, 'chat.length:', chat.length);
+        console.log('[Deep-Swipe-Cleanup] Initial state - messageId:', messageId, 'isUserMessage:', isUserMessage, 'chat.length:', chat.length);
         
         if (abortCleanupDone) {
             console.log('[Deep-Swipe-Cleanup] Cleanup already done, returning');
@@ -362,27 +359,52 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             });
         }
         
-        // CRITICAL: Remove the dangling DOM element if it exists
-        // This MUST be done LAST, after all re-rendering is complete
-        // The dangling element is the one that was being generated - it appears after
-        // the target message but its content is the partial assistant response
-        console.log('[Deep-Swipe-Cleanup] === FINAL DOM CLEANUP ===');
-        console.log('[Deep-Swipe-Cleanup] expectedDanglingMesId:', expectedDanglingMesId);
+        // CRITICAL: Find and remove the dangling DOM element BEFORE re-rendering
+        // The dangling element is the assistant message that was being streamed
+        // It appears after the target message and is NOT marked as stale
+        console.log('[Deep-Swipe-Cleanup] === FINDING DANGLING DOM ELEMENT ===');
         
-        if (expectedDanglingMesId !== null) {
-            const danglingEl = document.querySelector(`.mes[mesid="${expectedDanglingMesId}"]`);
-            console.log('[Deep-Swipe-Cleanup] Dangling element found:', !!danglingEl);
-            if (danglingEl) {
-                console.log('[Deep-Swipe-Cleanup] >>> REMOVING DANGLING DOM ELEMENT at mesid', expectedDanglingMesId, '<<<');
-                console.log('[Deep-Swipe-Cleanup] Element content preview:', danglingEl.querySelector('.mes_text')?.textContent?.substring(0, 50));
-                danglingEl.remove();
+        // Find all non-stale mes elements with mesid > messageId
+        // The dangling one is the assistant message that was being generated
+        let danglingEl = null;
+        const allMesElements = document.querySelectorAll('.mes[mesid]');
+        console.log('[Deep-Swipe-Cleanup] Scanning', allMesElements.length, 'mes elements for dangling one');
+        
+        for (const el of allMesElements) {
+            const mesidStr = el.getAttribute('mesid');
+            // Skip stale elements and empty mesids
+            if (!mesidStr || mesidStr.startsWith('stale-') || mesidStr === '') continue;
+            
+            const mesid = parseInt(mesidStr, 10);
+            if (isNaN(mesid)) continue;
+            
+            // Check if this is after the target message
+            if (mesid > messageId) {
+                const isUser = el.classList.contains('mes_user');
+                const textPreview = el.querySelector('.mes_text')?.textContent?.substring(0, 30);
+                console.log('[Deep-Swipe-Cleanup] Found element after target: mesid=', mesid, 'is_user=', isUser, 'text=', textPreview);
+                
+                // The dangling element is an assistant message (not user, not system)
+                if (!isUser && !danglingEl) {
+                    danglingEl = el;
+                    console.log('[Deep-Swipe-Cleanup] >>> SELECTED as dangling element <<<');
+                }
             }
         }
         
+        if (danglingEl) {
+            const mesid = danglingEl.getAttribute('mesid');
+            console.log('[Deep-Swipe-Cleanup] >>> REMOVING DANGLING DOM ELEMENT at mesid', mesid, '<<<');
+            console.log('[Deep-Swipe-Cleanup] Element content:', danglingEl.querySelector('.mes_text')?.textContent?.substring(0, 50));
+            danglingEl.remove();
+        } else {
+            console.log('[Deep-Swipe-Cleanup] No dangling element found to remove');
+        }
+        
         // Debug: Check all mes elements after cleanup
-        const allMesElements = document.querySelectorAll('.mes[mesid]');
-        console.log('[Deep-Swipe-Cleanup] All .mes elements after cleanup:', allMesElements.length);
-        allMesElements.forEach(el => {
+        const allMesAfter = document.querySelectorAll('.mes[mesid]');
+        console.log('[Deep-Swipe-Cleanup] All .mes elements after cleanup:', allMesAfter.length);
+        allMesAfter.forEach(el => {
             const mesid = el.getAttribute('mesid');
             const text = el.querySelector('.mes_text')?.textContent?.substring(0, 30);
             console.log('[Deep-Swipe-Cleanup]   mesid:', mesid, '- text:', text);
@@ -447,12 +469,6 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
                 // Calculate which mesid will have the dangling message
                 // For user swipes: chat truncated to messageId+1, temp added at messageId+1, assistant at messageId+2
                 // For assistant swipes: chat truncated to messageId, temp added at messageId, assistant at messageId+1
-                if (isUserMessage) {
-                    expectedDanglingMesId = messageId + 2;
-                } else {
-                    expectedDanglingMesId = messageId + 1;
-                }
-                console.log('[Deep-Swipe-Cleanup] Calculated expectedDanglingMesId:', expectedDanglingMesId, '(isUserMessage:', isUserMessage + ', messageId:', messageId + ')');
                 console.log('[Deep-Swipe-Cleanup] Current chat.length before stop:', chat.length);
                 
                 // Debug: Log current DOM state
