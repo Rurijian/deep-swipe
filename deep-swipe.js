@@ -221,7 +221,8 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
     
     // Keep reference to original target message for swipe updates during generation
     // But use capturedTargetMessage for cleanup restoration
-    const originalTargetMessage = chat[messageId];
+    // NOTE: Using let so we can update it after restoration to point to the new object
+    let originalTargetMessage = chat[messageId];
 
     // Set up event listener to capture reasoning from streaming
     let streamingReasoningData = null;
@@ -644,6 +645,11 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             const restoredMessages = capturedMessagesAfter.map(msg => JSON.parse(JSON.stringify(msg)));
             chat.splice(messageId + 1, 0, ...restoredMessages);
         }
+        
+        // CRITICAL FIX: Update originalTargetMessage to point to the restored object
+        // The old reference points to the original which SillyTavern may have corrupted
+        originalTargetMessage = chat[messageId];
+        console.log('[Deep Swipe] Updated originalTargetMessage to restored copy:', originalTargetMessage?.mes?.substring(0, 30));
 
         // Restore the mesid attributes after restoring messages
         // Both user and assistant swipes: restore ALL stale elements by their stale- prefix
