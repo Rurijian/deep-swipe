@@ -82,6 +82,9 @@ export async function handleUserSwipeBack(message, messageId, targetSwipeId, mes
  * @param {boolean} isUserMessage - Whether this is a user message (true) or assistant (false)
  */
 export async function generateMessageSwipe(message, messageId, context, isUserMessage = true) {
+    // Track expected dangling message ID for cleanup on stop
+    let expectedDanglingMesId = null;
+    
     // Check if Prompt Inspector is enabled - BLOCK generation if so
     const promptInspectorEnabled = localStorage.getItem('promptInspectorEnabled') === 'true';
     if (promptInspectorEnabled) {
@@ -255,6 +258,28 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
         eventSource.removeListener(event_types.STREAM_REASONING_DONE, reasoningEventHandler);
         eventSource.removeListener(event_types.GENERATION_STOPPED, abortHandler);
         
+        // CRITICAL: First, find and remove the dangling assistant message if it exists
+        // This is the partially-generated message that was being streamed
+        let tempMessageIndex = -1;
+        for (let i = chat.length - 1; i >= 0; i--) {
+            if (chat[i]?.extra?.isDeepSwipeTemp) {
+                tempMessageIndex = i;
+                break;
+            }
+        }
+        
+        // If temp message exists and there's an assistant message after it, that's the dangling one
+        if (tempMessageIndex !== -1 && tempMessageIndex < chat.length - 1) {
+            // Check all messages after temp message - they are dangling/partial
+            for (let i = chat.length - 1; i > tempMessageIndex; i--) {
+                const msg = chat[i];
+                if (msg && !msg.is_user && !msg.extra?.isDeepSwipeTemp) {
+                    console.log('[Deep Swipe] Removing dangling assistant message at index', i, ':', msg.mes?.substring(0, 50));
+                    chat.splice(i, 1);
+                }
+            }
+        }
+        
         // Revert swipe data BEFORE restoring chat (we still have the message reference)
         const targetMessage = isUserMessage ? message : originalTargetMessage;
         if (targetMessage) {
@@ -313,6 +338,18 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             });
         }
         
+        // CRITICAL: Remove the dangling DOM element if it exists
+        // This MUST be done LAST, after all re-rendering is complete
+        // The dangling element is the one that was being generated - it appears after
+        // the target message but its content is the partial assistant response
+        if (expectedDanglingMesId !== null) {
+            const danglingEl = document.querySelector(`.mes[mesid="${expectedDanglingMesId}"]`);
+            if (danglingEl) {
+                console.log('[Deep Swipe] Removing dangling DOM element at mesid', expectedDanglingMesId);
+                danglingEl.remove();
+            }
+        }
+        
         toastr.warning('Deep Swipe generation was stopped.', 'Deep Swipe');
     };
     
@@ -363,8 +400,18 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             onStop: () => {
                 // Mark that we intentionally stopped our own generation
                 isOurGeneration = true;
-                // Stop generation when user clicks the stop button
-                // This triggers GENERATION_STOPPED which calls abortHandler
+                
+                // Calculate which mesid will have the dangling message
+                // For user swipes: chat truncated to messageId+1, temp added at messageId+1, assistant at messageId+2
+                // For assistant swipes: chat truncated to messageId, temp added at messageId, assistant at messageId+1
+                if (isUserMessage) {
+                    expectedDanglingMesId = messageId + 2;
+                } else {
+                    expectedDanglingMesId = messageId + 1;
+                }
+                console.log('[Deep Swipe] Expecting dangling message at mesid:', expectedDanglingMesId, '(isUserMessage:', isUserMessage + ')');
+                
+                // Stop generation - this triggers GENERATION_STOPPED which calls abortHandler
                 stopGeneration();
             }
         });
