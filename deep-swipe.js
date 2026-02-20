@@ -117,6 +117,25 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
     chatBackupBeforeGeneration = JSON.parse(JSON.stringify(chat));
     chatBackupTimestamp = Date.now();
 
+    // UI PREVENTION: Hide "Show more messages" button during generation
+    // Inject CSS to hide the button completely - this works regardless of event handling
+    let showMoreBlocked = true;
+    const styleId = 'deep-swipe-hide-show-more';
+    
+    // Create style element to hide the button
+    if (!document.getElementById(styleId)) {
+        const style = document.createElement('style');
+        style.id = styleId;
+        style.textContent = `
+            #show_more_messages {
+                display: none !important;
+                visibility: hidden !important;
+                pointer-events: none !important;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
     // If messageId+1 exists but has empty content, SillyTavern corrupted it
     if (chat[messageId + 1] && chat[messageId + 1].mes === '' && chat[messageId + 1].is_user) {
         try {
@@ -302,6 +321,13 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             }
             overlay.remove();
             delete window._deepSwipeOverlayPopups[messageId];
+        }
+
+        // UI PREVENTION CLEANUP: Remove the CSS that hides the button
+        showMoreBlocked = false;
+        const styleEl = document.getElementById(styleId);
+        if (styleEl) {
+            styleEl.remove();
         }
 
         // CRITICAL: Use printMessages to fully re-render the chat after cleanup
@@ -887,6 +913,13 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
         // This prevents the backup from being used if a new generation starts
         chatBackupBeforeGeneration = null;
         chatBackupTimestamp = null;
+        
+        // UI PREVENTION CLEANUP: Remove the CSS that hides the button on success
+        showMoreBlocked = false;
+        const styleElSuccess = document.getElementById(styleId);
+        if (styleElSuccess) {
+            styleElSuccess.remove();
+        }
 
     } catch (err) {
         error('Error in guided impersonation:', err);
@@ -906,6 +939,13 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             }
             const { removeSwipeOverlay } = await import('./ui.js');
             removeSwipeOverlay(messageId);
+            
+            // UI PREVENTION CLEANUP: Remove the CSS that hides the button
+            showMoreBlocked = false;
+            const styleElExternal = document.getElementById(styleId);
+            if (styleElExternal) {
+                styleElExternal.remove();
+            }
             
             // Warn user about potential corruption
             toastr.error('Generation was cancelled by another extension. Chat may be in an inconsistent state. Please refresh if you notice issues.', 'Deep Swipe Warning');
@@ -980,6 +1020,12 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
                 scroll: false,
                 showSwipes: true
             });
+            
+            // UI PREVENTION CLEANUP: Restore original showMoreMessages function
+            showMoreBlocked = false;
+            if (originalShowMoreMessages) {
+                window.showMoreMessages = originalShowMoreMessages;
+            }
         }
         throw err;
     }
