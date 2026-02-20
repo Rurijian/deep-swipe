@@ -2,6 +2,14 @@
 
 All notable changes to the Deep Swipe extension will be documented in this file.
 
+## [1.5.5] - 2026-02-20
+
+### Fixed
+- **Chat Reconstruction Bug**: Fixed issue where loading older messages during generation would corrupt the chat
+  - "Show more messages" button is now hidden during Deep Swipe generation
+  - Prevents users from inadvertently breaking chat reconstruction by loading older messages mid-generation
+  - Button reappears automatically when generation completes or is stopped
+
 ## [1.5.4] - 2026-02-07
 
 ### Changed
