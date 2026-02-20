@@ -4,7 +4,6 @@
  * Allows swiping (regenerating) any message in chat history, not just the last one.
  *
  * @author Rurijian
- * @version 1.5.5
  * @license MIT
  */
 
