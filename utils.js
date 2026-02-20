@@ -4,7 +4,7 @@
  * Shared helper functions used across the extension.
  *
  * @author Rurijian
- * @version 1.5.4
+ * @version 1.5.5
  * @license MIT
  */
 
