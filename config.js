@@ -31,7 +31,7 @@ export const DEFAULT_IMPERSONATION_PROMPT = "NEW DIRECTION: Could you take my la
  * Default prompt for assistant message swipes
  * @constant {string}
  */
-export const DEFAULT_ASSISTANT_PROMPT = "Continue.";
+export const DEFAULT_ASSISTANT_PROMPT = "Execute.";
 
 /**
  * Default settings for the extension
