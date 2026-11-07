@@ -2,6 +2,16 @@
 
 All notable changes to the Deep Swipe extension will be documented in this file.
 
+## [1.5.6] - 2026-11-07
+
+### Fixed
+- **Long Chat Error Recovery**: Generation errors now restore every stale message ID, preserve the original swipe, and rethrow the original error instead of failing during cleanup
+- Removed fixed 100/1000-message limits from temporary DOM truncation and restoration
+- "Show more messages" is restored and the recovered chat is saved after generation errors
+- **Truncated History Navigation**: Slash commands now render older, hidden messages before calling native swipe or swipe-deletion APIs
+- Hide the temporary streaming response during generation so its reasoning-only phase does not appear as a separate reply
+- Keep the swipe target anchored on screen by suppressing automatic chat scrolling during generation and restoring its viewport position afterward
+
 ## [1.5.5] - 2026-02-20
 
 ### Fixed

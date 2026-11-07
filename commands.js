@@ -10,7 +10,7 @@
 import { getContext } from '../../../extensions.js';
 import { deleteSwipe, deleteMessage } from '../../../../script.js';
 import { getSettings, EXTENSION_NAME } from './config.js';
-import { isValidMessageId, canDeleteSwipe, clearEditMessage } from './utils.js';
+import { isValidMessageId, canDeleteSwipe, clearEditMessage, ensureMessageRendered } from './utils.js';
 
 /**
  * Register slash commands for Deep Swipe
@@ -132,6 +132,10 @@ export async function registerSlashCommands(dswipeBack, dswipeForward) {
                 }
 
                 const swipeIndex = message.swipe_id ?? 0;
+                if (!await ensureMessageRendered(id)) {
+                    toastr.error(`Unable to render message ${id}. Swipe deletion cancelled.`, 'Deep Swipe');
+                    return 'Message not rendered';
+                }
                 await deleteSwipe(swipeIndex, id);
                 return `Deleted swipe ${swipeIndex + 1} from message ${id}`;
             },

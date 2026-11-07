@@ -11,13 +11,90 @@ import { getContext } from '../../../extensions.js';
 import { Generate, eventSource, event_types, cancelDebouncedChatSave, saveChatConditional, stopGeneration } from '../../../../script.js';
 import { updateReasoningUI, ReasoningType } from '../../../../scripts/reasoning.js';
 import { getSettings, EXTENSION_NAME, DEFAULT_ASSISTANT_PROMPT } from './config.js';
-import { syncReasoningFromSwipeInfo, error, isValidMessageId } from './utils.js';
+import { syncReasoningFromSwipeInfo, error, isValidMessageId, ensureMessageRendered } from './utils.js';
 import { updateMessageSwipeUI } from './ui.js';
 
 // Module-level variable to store complete chat backup before generation
 // This ensures we have a clean state to restore from if corruption occurs
 let chatBackupBeforeGeneration = null;
 let chatBackupTimestamp = null;
+
+/**
+ * Mark rendered messages at and after an index as stale during temporary chat truncation.
+ * @param {number} startId - First message ID to mark
+ */
+function markMessageElementsStale(startId) {
+    document.querySelectorAll('#chat .mes').forEach(el => {
+        const messageId = Number(el.getAttribute('mesid'));
+        if (Number.isInteger(messageId) && messageId >= startId) {
+            el.setAttribute('mesid', `stale-${messageId}`);
+        }
+    });
+}
+
+/**
+ * Restore all message IDs previously marked as stale.
+ */
+function restoreStaleMessageElements() {
+    document.querySelectorAll('.mes[mesid^="stale-"]').forEach(el => {
+        const originalId = el.getAttribute('mesid')?.replace(/^stale-/, '');
+        if (originalId && /^\d+$/.test(originalId)) {
+            el.setAttribute('mesid', originalId);
+        }
+    });
+}
+
+/**
+ * Hide the temporary assistant message used to generate a Deep Swipe.
+ * Its reasoning and partial text should not appear as a separate reply while streaming.
+ * @param {string} styleId - Generation-scoped style element ID
+ * @param {number} messageId - ID the temporary assistant message will occupy
+ */
+function hideGeneratedStreamingMessage(styleId, messageId) {
+    const style = document.getElementById(styleId);
+    if (style) {
+        style.textContent += `
+            #chat .mes[mesid="${messageId}"] {
+                display: none !important;
+                visibility: hidden !important;
+            }
+        `;
+    }
+}
+
+/**
+ * Capture the target's viewport position before generation alters the chat.
+ * @param {Element|null} messageElement - Target message element
+ * @returns {{chatElement: Element, messageElement: Element, messageId: number, scrollTop: number, viewportTop: number}|null}
+ */
+function captureMessageView(messageElement, messageId) {
+    const chatElement = document.getElementById('chat');
+    if (!chatElement || !messageElement) return null;
+    return {
+        chatElement,
+        messageElement,
+        messageId,
+        scrollTop: chatElement.scrollTop,
+        viewportTop: messageElement.getBoundingClientRect().top,
+    };
+}
+
+/**
+ * Restore the target to its original viewport position after rendering.
+ * @param {ReturnType<typeof captureMessageView>} anchor - Captured viewport anchor
+ */
+function restoreMessageView(anchor) {
+    if (!anchor) return;
+    const target = anchor.messageElement?.isConnected
+        ? anchor.messageElement
+        : document.querySelector(`.mes[mesid="${anchor.messageId}"]`);
+    if (target) {
+        const delta = target.getBoundingClientRect().top - anchor.viewportTop;
+        anchor.chatElement.scrollTop += delta;
+    } else {
+        anchor.chatElement.scrollTop = anchor.scrollTop;
+    }
+}
 
 /**
  * Get the current API and model information for swipe storage
@@ -213,6 +290,30 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
     // Get the message element to show ellipsis (or not if keepSwipeVisible is enabled)
     const messageElement = document.querySelector(`.mes[mesid="${messageId}"] .mes_text`);
     const mesElement = document.querySelector(`.mes[mesid="${messageId}"]`);
+    const scrollAnchor = captureMessageView(mesElement, messageId);
+
+    // Suppress core auto-scroll without changing the persisted user setting.
+    let powerUserSettings = null;
+    let originalAutoScroll = null;
+    try {
+        ({ power_user: powerUserSettings } = await import('../../../../scripts/power-user.js'));
+        originalAutoScroll = powerUserSettings.auto_scroll_chat_to_bottom;
+        powerUserSettings.auto_scroll_chat_to_bottom = false;
+    } catch (scrollError) {
+        console.warn('[Deep Swipe] Unable to suppress automatic chat scrolling:', scrollError);
+    }
+
+    let viewRestored = false;
+    const restoreGenerationView = () => {
+        if (viewRestored) return;
+        viewRestored = true;
+        if (powerUserSettings && originalAutoScroll !== null) {
+            powerUserSettings.auto_scroll_chat_to_bottom = originalAutoScroll;
+        }
+        restoreMessageView(scrollAnchor);
+        // Run after any scroll already queued by SillyTavern's final streaming frame.
+        requestAnimationFrame(() => restoreMessageView(scrollAnchor));
+    };
 
     // Show waiting toast
     const waitingToast = toastr.info('Generating Deep Swipe...', 'Deep Swipe', { timeOut: 0, extendedTimeOut: 0 });
@@ -340,6 +441,7 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
 
         // Call printMessages to re-render entire chat
         await context.printMessages();
+        restoreGenerationView();
 
         // CRITICAL FIX: Ensure the chat array reference is maintained
         // Some SillyTavern internals may hold the reference, so we need to ensure
@@ -501,14 +603,7 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             chat.length = messageId + 1;
             
             // Mark elements after target as stale so Generate() doesn't find them
-            for (let i = messageId + 1; i < 1000; i++) {
-                const el = document.querySelector(`.mes[mesid="${i}"]`);
-                if (el) {
-                    el.setAttribute('mesid', `stale-${i}`);
-                } else {
-                    break;
-                }
-            }
+            markMessageElementsStale(messageId + 1);
             
             // Append temp user message (now at position messageId+1)
             const tempUserMessage = {
@@ -519,6 +614,9 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
                 extra: { isSmallSys: true, isDeepSwipeTemp: true },
             };
             chat.push(tempUserMessage);
+
+            // Hide the temporary assistant response, including its reasoning-only phase.
+            hideGeneratedStreamingMessage(styleId, chat.length);
             
             // Generate with truncated context
             await Generate('normal', {
@@ -532,14 +630,7 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             chat.length = messageId;
             
             // Mark target and messages after as stale so Generate() doesn't find them
-            for (let i = messageId; i < 1000; i++) {
-                const el = document.querySelector(`.mes[mesid="${i}"]`);
-                if (el) {
-                    el.setAttribute('mesid', `stale-${i}`);
-                } else {
-                    break;
-                }
-            }
+            markMessageElementsStale(messageId);
             
             // Append temp user message (now at position messageId)
             const assistantPrompt = settings?.assistantPrompt || DEFAULT_ASSISTANT_PROMPT;
@@ -551,6 +642,9 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
                 extra: { isSmallSys: true, isDeepSwipeTemp: true },
             };
             chat.push(tempContextMessage);
+
+            // Hide the temporary assistant response, including its reasoning-only phase.
+            hideGeneratedStreamingMessage(styleId, chat.length);
             
             // Generate with truncated context (only sees messages before target)
             await Generate('normal', {
@@ -646,13 +740,8 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
         // The old reference points to the original which SillyTavern may have corrupted
         originalTargetMessage = chat[messageId];
 
-        // Restore the mesid attributes after restoring messages
-        // Both user and assistant swipes: restore ALL stale elements by their stale- prefix
-        document.querySelectorAll('.mes[mesid^="stale-"]').forEach(el => {
-            const staleId = el.getAttribute('mesid');
-            const originalId = staleId.replace('stale-', '');
-            el.setAttribute('mesid', originalId);
-        });
+        // Restore mesid attributes after restoring messages
+        restoreStaleMessageElements();
 
         // CRITICAL: Cancel saves after restoring chat state
         cancelDebouncedChatSave();
@@ -919,6 +1008,7 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
         if (styleElSuccess) {
             styleElSuccess.remove();
         }
+        restoreGenerationView();
 
     } catch (err) {
         error('Error in guided impersonation:', err);
@@ -945,6 +1035,7 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             if (styleElExternal) {
                 styleElExternal.remove();
             }
+            restoreGenerationView();
             
             // Warn user about potential corruption
             toastr.error('Generation was cancelled by another extension. Chat may be in an inconsistent state. Please refresh if you notice issues.', 'Deep Swipe Warning');
@@ -976,15 +1067,7 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             }
             
             // Restore mesid attributes
-            const restoreStartIndex = isUserMessage ? messageId + 1 : messageId;
-            for (let i = restoreStartIndex; i < 100; i++) {
-                const el = document.querySelector(`.mes[mesid="stale-${i}"]`);
-                if (el) {
-                    el.setAttribute('mesid', `${i}`);
-                } else {
-                    break;
-                }
-            }
+            restoreStaleMessageElements();
 
             // Remove waiting toast
             if (waitingToast) {
@@ -1000,12 +1083,13 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
             const { removeSwipeOverlay } = await import('./ui.js');
             removeSwipeOverlay(messageId);
 
-            // Revert swipe - use appropriate message reference
+            // Revert to the original swipe. The generation placeholder only exists on
+            // capturedTargetMessage, so never pop the real target's swipe arrays here.
             const revertTarget = isUserMessage ? message : (originalTargetMessage || chat[messageId]);
             if (revertTarget) {
-                revertTarget.swipes.pop();
-                revertTarget.swipe_info?.pop();
-                revertTarget.swipe_id = Math.max(0, revertTarget.swipes.length - 1);
+                revertTarget.swipe_id = originalSwipeId;
+                revertTarget.mes = originalSwipeText;
+                revertTarget.extra = structuredClone(originalSwipeExtra || {});
             }
             // Restore original message text in UI
             if (messageElement) {
@@ -1020,11 +1104,14 @@ export async function generateMessageSwipe(message, messageId, context, isUserMe
                 showSwipes: true
             });
             
-            // UI PREVENTION CLEANUP: Restore original showMoreMessages function
+            // Restore the Show more messages control and persist the recovered chat.
             showMoreBlocked = false;
-            if (originalShowMoreMessages) {
-                window.showMoreMessages = originalShowMoreMessages;
-            }
+            document.getElementById(styleId)?.remove();
+            cancelDebouncedChatSave();
+            await saveChatConditional();
+            chatBackupBeforeGeneration = null;
+            chatBackupTimestamp = null;
+            restoreGenerationView();
         }
         throw err;
     }
@@ -1043,6 +1130,11 @@ export async function dswipeBack(args, messageId) {
     if (!isValidMessageId(messageId, chat)) {
         toastr.error(`Invalid message ID: ${messageId}`, 'Deep Swipe');
         return 'Invalid message ID';
+    }
+
+    if (!await ensureMessageRendered(messageId)) {
+        toastr.error(`Unable to render message ${messageId}. Swipe cancelled.`, 'Deep Swipe');
+        return 'Message not rendered';
     }
 
     const message = chat[messageId];
@@ -1123,6 +1215,11 @@ export async function dswipeForward(args, messageId) {
     if (!isValidMessageId(messageId, chat)) {
         toastr.error(`Invalid message ID: ${messageId}`, 'Deep Swipe');
         return 'Invalid message ID';
+    }
+
+    if (!await ensureMessageRendered(messageId)) {
+        toastr.error(`Unable to render message ${messageId}. Swipe cancelled.`, 'Deep Swipe');
+        return 'Message not rendered';
     }
 
     const message = chat[messageId];

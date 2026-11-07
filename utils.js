@@ -24,6 +24,33 @@ export function isValidMessageId(messageId, chat) {
 }
 
 /**
+ * Ensures a message is present in the rendered DOM before calling native swipe APIs.
+ * SillyTavern only renders a suffix of long chats until older messages are requested.
+ * Native swipe() expects a rendered target and can otherwise leave its swipe state locked.
+ * @param {number} messageId - The message ID to render
+ * @returns {Promise<boolean>} Whether the message is rendered
+ */
+export async function ensureMessageRendered(messageId) {
+    const selector = `.mes[mesid="${messageId}"]`;
+    if (document.querySelector(selector)) {
+        return true;
+    }
+
+    try {
+        const firstDisplayedId = Number(document.querySelector('#chat .mes')?.getAttribute('mesid'));
+        const messagesToLoad = Number.isFinite(firstDisplayedId) && firstDisplayedId > messageId
+            ? firstDisplayedId - messageId
+            : Number.MAX_SAFE_INTEGER;
+        const { showMoreMessages } = await import('../../../../script.js');
+        await showMoreMessages(messagesToLoad);
+    } catch (err) {
+        error(`Failed to render message ${messageId}:`, err);
+    }
+
+    return Boolean(document.querySelector(selector));
+}
+
+/**
  * Checks if a message can be swiped based on its type and settings
  * @param {Object} message - The message object to check
  * @returns {boolean} True if the message is swipeable
